@@ -11,6 +11,8 @@ import { createShoulderRepCounter } from "../utils/shoulderRepCounter";
 import { computeSessionScore, getDurationSec } from "../utils/scoring";
 import { getPerformanceTier } from "../utils/performance";
 import { saveSession } from "../lib/storage/sessionStore";
+import { createEMA } from "../utils/ema";
+import { createRollingWindow, computeStdDev } from "../utils/variance";
 
 export default function Coach() {
   const [selectedExercise, setSelectedExercise] = useState(null);
@@ -20,40 +22,70 @@ export default function Coach() {
   const [startedAt, setStartedAt] = useState(null);
   const [nowMs, setNowMs] = useState(0);
 
-  // set an initial nowMs once after mount (safe)
+  // app pause (tab hidden)
+  const [appPaused, setAppPaused] = useState(false);
+
+  // timeline sampling (for sparkline)
+  const timelineRef = useRef([]); // [{t, hd}]
+  const lastSampleAtRef = useRef(0);
+
+  useEffect(() => {
+    const onVis = () => setAppPaused(document.hidden);
+    onVis();
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
+
+  // set initial nowMs once after mount
   useEffect(() => {
     setNowMs(Date.now());
   }, []);
 
-  // tick time ONLY while session is active
+  // tick time ONLY while session active & not paused
   useEffect(() => {
-    if (!sessionActive) return;
+    if (!sessionActive || appPaused) return;
     const id = setInterval(() => setNowMs(Date.now()), 250);
     return () => clearInterval(id);
-  }, [sessionActive]);
+  }, [sessionActive, appPaused]);
 
   const videoRef = useRef(null);
 
   const { landmarks } = usePose({
     videoRef,
-    enabled: sessionActive && !!selectedExercise,
+    enabled: sessionActive && !appPaused && !!selectedExercise,
   });
 
-  // Only show overlay while session is active
-  const overlayLandmarks = sessionActive ? landmarks : null;
+  // show overlay only while active + not paused
+  const overlayLandmarks = sessionActive && !appPaused ? landmarks : null;
 
-  // Counters (stable)
+  // counters
   const squatCounter = useMemo(() => createRepCounter(), []);
   const shoulderCounter = useMemo(() => createShoulderRepCounter(), []);
 
-  // Squat state
+  // EMA filters
+  const leftElbowY = useMemo(() => createEMA(0.35), []);
+  const rightElbowY = useMemo(() => createEMA(0.35), []);
+
+  // stability window (rolling std dev of elbow heightDiff)
+  const shoulderWindow = useMemo(() => createRollingWindow(15), []);
+
+  // calibration state
+  const [calibration, setCalibration] = useState({
+    active: false,
+    ready: false,
+    startMs: null,
+    samples: [],
+    margin: 0.03,
+  });
+
+  // squat UI state
   const [squat, setSquat] = useState({
     kneeAngle: null,
     reps: 0,
     phase: "UP",
   });
 
-  // Shoulder state
+  // shoulder UI state
   const [shoulder, setShoulder] = useState({
     reps: 0,
     phase: "DOWN",
@@ -62,15 +94,19 @@ export default function Coach() {
     symmetryOk: true,
   });
 
-  // Session metrics
+  // metrics
   const [metrics, setMetrics] = useState({
     totalFrames: 0,
     badFrames: 0,
+    unstableFrames: 0,
     mistakes: {
       squatTooHigh: 0,
       squatUnstable: 0,
       shoulderAsymmetry: 0,
       shoulderNotHighEnough: 0,
+      shoulderTooFast: 0,
+      shoulderTooSlow: 0,
+      shoulderUnstable: 0,
     },
   });
 
@@ -110,7 +146,7 @@ export default function Coach() {
     }));
   }, [landmarks, selectedExercise, squatCounter, sessionActive]);
 
-  // ---- Shoulder Raise Logic ----
+  // ---- Shoulder Raise Logic (EMA + calibration + stability + tempo + timeline) ----
   useEffect(() => {
     if (!landmarks) return;
     if (selectedExercise !== "Shoulder Raise") return;
@@ -132,19 +168,62 @@ export default function Coach() {
       return;
     }
 
+    // EMA smooth elbows
+    const lY = leftElbowY.next(leftElbow.y);
+    const rY = rightElbowY.next(rightElbow.y);
+    if (lY == null || rY == null) return;
+
+    // Calibration phase (~2s)
+    if (sessionActive && calibration.active && !calibration.ready) {
+      const now = Date.now();
+      const elapsed = calibration.startMs ? now - calibration.startMs : 0;
+
+      const baseOffset =
+        ((lY - leftShoulder.y) + (rY - rightShoulder.y)) / 2;
+
+      if (elapsed < 2000) {
+        setCalibration((c) => {
+          const nextSamples =
+            c.samples.length < 180 ? [...c.samples, baseOffset] : c.samples;
+          return { ...c, samples: nextSamples };
+        });
+        return;
+      }
+
+      const samples = calibration.samples;
+      const avg =
+        samples.reduce((a, b) => a + b, 0) / Math.max(samples.length, 1);
+
+      const dynamicMargin = Math.min(
+        0.08,
+        Math.max(0.02, Math.abs(avg) * 0.4 + 0.02)
+      );
+
+      setCalibration((c) => ({
+        ...c,
+        active: false,
+        ready: true,
+        margin: dynamicMargin,
+        samples: [],
+      }));
+
+      return;
+    }
+
+    // fallback margin (if not calibrated yet)
     const shoulderWidth = Math.abs(rightShoulder.x - leftShoulder.x);
-    const margin = Math.max(0.02, Math.min(0.06, shoulderWidth * 0.15));
+    const dynamicBase = Math.max(0.02, Math.min(0.06, shoulderWidth * 0.15));
+    const margin = calibration.ready ? calibration.margin : dynamicBase;
 
-    const leftUp = leftElbow.y < leftShoulder.y - margin;
-    const rightUp = rightElbow.y < rightShoulder.y - margin;
+    const leftUp = lY < leftShoulder.y - margin;
+    const rightUp = rY < rightShoulder.y - margin;
 
-    const heightDiff = Math.abs(leftElbow.y - rightElbow.y);
+    const heightDiff = Math.abs(lY - rY);
     const symmetryOk = heightDiff <= margin * 1.2;
 
     const bothUp = leftUp && rightUp;
     const bothDown =
-      leftElbow.y > leftShoulder.y + margin &&
-      rightElbow.y > rightShoulder.y + margin;
+      lY > leftShoulder.y + margin && rY > rightShoulder.y + margin;
 
     const result = shoulderCounter.update({ bothUp, bothDown });
 
@@ -157,31 +236,112 @@ export default function Coach() {
     });
 
     if (!sessionActive) return;
+    if (calibration.active && !calibration.ready) return;
 
-    // Only evaluate when actively attempting movement
     const attemptingRaise = leftUp || rightUp || result.phase === "UP";
-    if (!attemptingRaise) return;
 
-    const notHighEnough = !bothUp && result.phase === "UP";
-    const asymmetry = !symmetryOk && result.phase === "UP";
+    // Timeline sampling (every ~200ms while active)
+    if (attemptingRaise) {
+      const now = Date.now();
+      const last = lastSampleAtRef.current || 0;
+      if (now - last >= 200) {
+        lastSampleAtRef.current = now;
+        const t = startedAt ? Math.max(0, Math.round((now - startedAt) / 1000)) : 0;
 
-    setMetrics((m) => ({
-      ...m,
-      totalFrames: m.totalFrames + 1,
-      badFrames: m.badFrames + (asymmetry || notHighEnough ? 1 : 0),
-      mistakes: {
-        ...m.mistakes,
-        shoulderAsymmetry: m.mistakes.shoulderAsymmetry + (asymmetry ? 1 : 0),
-        shoulderNotHighEnough:
-          m.mistakes.shoulderNotHighEnough + (notHighEnough ? 1 : 0),
-      },
-    }));
-  }, [landmarks, selectedExercise, shoulderCounter, sessionActive]);
+        // store normalized symmetry metric: heightDiff (smaller=better)
+        timelineRef.current.push({ t, hd: Number(heightDiff.toFixed(4)) });
 
-  // Reset on exercise change (no Date.now() here; keep it pure + predictable)
+        // cap timeline size (keeps localStorage light)
+        if (timelineRef.current.length > 400) {
+          timelineRef.current.splice(0, timelineRef.current.length - 400);
+        }
+      }
+    }
+
+    // Stability / variance (ONLY while moving; reset when idle)
+    if (attemptingRaise) {
+      shoulderWindow.push(heightDiff);
+
+      if (shoulderWindow.size() >= 10) {
+        const std = computeStdDev(shoulderWindow.getValues());
+        const unstable = std > Math.max(0.01, margin * 0.6) // dynamic threshold
+
+        if (unstable) {
+          setMetrics((m) => ({
+            ...m,
+            unstableFrames: m.unstableFrames + 1,
+            mistakes: {
+              ...m.mistakes,
+              shoulderUnstable: m.mistakes.shoulderUnstable + 1,
+            },
+          }));
+        }
+      }
+    } else {
+      shoulderWindow.reset();
+    }
+
+    // Frame-based errors (only while moving)
+    if (attemptingRaise) {
+      const notHighEnough = !bothUp && result.phase === "UP";
+      const asymmetry = !symmetryOk && result.phase === "UP";
+
+      setMetrics((m) => ({
+        ...m,
+        totalFrames: m.totalFrames + 1,
+        badFrames: m.badFrames + (asymmetry || notHighEnough ? 1 : 0),
+        mistakes: {
+          ...m.mistakes,
+          shoulderAsymmetry: m.mistakes.shoulderAsymmetry + (asymmetry ? 1 : 0),
+          shoulderNotHighEnough:
+            m.mistakes.shoulderNotHighEnough + (notHighEnough ? 1 : 0),
+        },
+      }));
+    }
+
+    // Tempo scoring (only when rep completes)
+    if (result.lastRepDurationSec != null) {
+      const d = result.lastRepDurationSec;
+      const tooFast = d < 0.5;
+      const tooSlow = d > 4.0;
+
+      if (tooFast || tooSlow) {
+        setMetrics((m) => ({
+          ...m,
+          mistakes: {
+            ...m.mistakes,
+            shoulderTooFast: m.mistakes.shoulderTooFast + (tooFast ? 1 : 0),
+            shoulderTooSlow: m.mistakes.shoulderTooSlow + (tooSlow ? 1 : 0),
+          },
+        }));
+      }
+    }
+  }, [
+    landmarks,
+    selectedExercise,
+    shoulderCounter,
+    sessionActive,
+    leftElbowY,
+    rightElbowY,
+    shoulderWindow,
+    calibration.active,
+    calibration.ready,
+    calibration.startMs,
+    calibration.samples,
+    calibration.margin,
+    startedAt,
+  ]);
+
+  // Reset on exercise change
   useEffect(() => {
     squatCounter.reset();
     shoulderCounter.reset();
+    leftElbowY.reset();
+    rightElbowY.reset();
+    shoulderWindow.reset();
+
+    timelineRef.current = [];
+    lastSampleAtRef.current = 0;
 
     setSquat({ kneeAngle: null, reps: 0, phase: "UP" });
     setShoulder({
@@ -192,6 +352,14 @@ export default function Coach() {
       symmetryOk: true,
     });
 
+    setCalibration({
+      active: false,
+      ready: false,
+      startMs: null,
+      samples: [],
+      margin: 0.03,
+    });
+
     setSessionActive(false);
     setStartedAt(null);
     setNowMs(0);
@@ -199,14 +367,25 @@ export default function Coach() {
     setMetrics({
       totalFrames: 0,
       badFrames: 0,
+      unstableFrames: 0,
       mistakes: {
         squatTooHigh: 0,
         squatUnstable: 0,
         shoulderAsymmetry: 0,
         shoulderNotHighEnough: 0,
+        shoulderTooFast: 0,
+        shoulderTooSlow: 0,
+        shoulderUnstable: 0,
       },
     });
-  }, [selectedExercise, squatCounter, shoulderCounter]);
+  }, [
+    selectedExercise,
+    squatCounter,
+    shoulderCounter,
+    leftElbowY,
+    rightElbowY,
+    shoulderWindow,
+  ]);
 
   // Feedback
   let feedback = "Select an exercise to begin.";
@@ -219,18 +398,20 @@ export default function Coach() {
   }
 
   if (selectedExercise === "Shoulder Raise") {
-    if (!landmarks && sessionActive) feedback = "Stand in camera view.";
+    if (sessionActive && calibration.active && !calibration.ready)
+      feedback = "Calibrating… stand straight for 2 seconds.";
+    else if (!landmarks && sessionActive) feedback = "Stand in camera view.";
     else if (!shoulder.symmetryOk) feedback = "Raise both arms evenly.";
     else if (shoulder.phase === "DOWN") feedback = "Raise arms above shoulders.";
     else feedback = "Great ✅ Now lower arms to complete rep.";
   }
 
-  // live duration + normalized score
   const liveDurationSec =
     sessionActive && startedAt ? getDurationSec(startedAt, nowMs) : 0;
 
   const score = computeSessionScore({
     badFrames: metrics.badFrames,
+    unstableFrames: metrics.unstableFrames,
     durationSec: liveDurationSec,
   });
 
@@ -241,6 +422,12 @@ export default function Coach() {
 
     squatCounter.reset();
     shoulderCounter.reset();
+    leftElbowY.reset();
+    rightElbowY.reset();
+    shoulderWindow.reset();
+
+    timelineRef.current = [];
+    lastSampleAtRef.current = 0;
 
     setSquat({ kneeAngle: null, reps: 0, phase: "UP" });
     setShoulder({
@@ -254,22 +441,44 @@ export default function Coach() {
     setMetrics({
       totalFrames: 0,
       badFrames: 0,
+      unstableFrames: 0,
       mistakes: {
         squatTooHigh: 0,
         squatUnstable: 0,
         shoulderAsymmetry: 0,
         shoulderNotHighEnough: 0,
+        shoulderTooFast: 0,
+        shoulderTooSlow: 0,
+        shoulderUnstable: 0,
       },
     });
 
     const start = Date.now();
     setStartedAt(start);
     setNowMs(start);
+
+    if (selectedExercise === "Shoulder Raise") {
+      setCalibration({
+        active: true,
+        ready: false,
+        startMs: start,
+        samples: [],
+        margin: 0.03,
+      });
+    } else {
+      setCalibration({
+        active: false,
+        ready: false,
+        startMs: null,
+        samples: [],
+        margin: 0.03,
+      });
+    }
+
     setSessionActive(true);
   }
 
   function endSession() {
-    // freeze-safe guard
     if (!selectedExercise || !startedAt) return;
 
     const endMs = Date.now();
@@ -277,6 +486,7 @@ export default function Coach() {
 
     const finalScore = computeSessionScore({
       badFrames: metrics.badFrames,
+      unstableFrames: metrics.unstableFrames,
       durationSec,
     });
 
@@ -291,6 +501,10 @@ export default function Coach() {
       durationSec,
       createdAt: new Date().toISOString(),
       mistakes: metrics.mistakes,
+      calibration: calibration.ready ? { margin: calibration.margin } : null,
+
+      // ✅ sparkline data
+      timeline: timelineRef.current,
     };
 
     saveSession(session);
@@ -308,13 +522,19 @@ export default function Coach() {
         onSelect={setSelectedExercise}
       />
 
+      {sessionActive && appPaused && (
+        <div className="mt-4 mb-2 p-3 rounded-lg border bg-yellow-50 text-yellow-800">
+          Paused: tab is hidden. Come back to resume.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="font-semibold text-gray-700 mb-4">Camera</h3>
 
           <div className="relative w-full max-w-2xl">
             <CameraView
-              isActive={sessionActive && !!selectedExercise}
+              isActive={sessionActive && !!selectedExercise && !appPaused}
               ref={videoRef}
             />
             <PoseOverlay landmarks={overlayLandmarks} />
@@ -364,6 +584,19 @@ export default function Coach() {
                     <span className="font-bold">{liveDurationSec}s</span>
                   </div>
                 )}
+
+                {sessionActive &&
+                  selectedExercise === "Shoulder Raise" &&
+                  calibration.ready && (
+                    <div className="px-4 py-2 rounded-lg border bg-white">
+                      <span className="text-gray-500 text-sm mr-2">
+                        Calibrated margin
+                      </span>
+                      <span className="font-bold">
+                        {calibration.margin.toFixed(3)}
+                      </span>
+                    </div>
+                  )}
               </div>
 
               <div className="mt-4 p-4 rounded-lg bg-gray-50 border">

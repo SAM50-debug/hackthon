@@ -1,5 +1,7 @@
+// FILE: src/pages/History.jsx
 import useSessionHistory from "../hooks/useSessionHistory";
 import { getPerformanceTier } from "../utils/performance";
+import Sparkline from "../components/Sparkline";
 
 export default function History() {
   const { sessions, clearAll, refresh } = useSessionHistory();
@@ -32,36 +34,111 @@ export default function History() {
       ) : (
         <div className="space-y-4">
           {sessions.map((s) => {
-            const tierInfo = getPerformanceTier(Number(s.score ?? 0));
+            const scoreNum = Number(s.score ?? 0);
+            const tierInfo = getPerformanceTier(scoreNum);
+
+            const isShoulder = s.exercise === "Shoulder Raise";
+
+            // supports both formats:
+            // - timeline: [{t, hd}, ...]
+            // - timeline already reduced to numbers
+            const timelineArr = Array.isArray(s.timeline) ? s.timeline : [];
+            const hasTimeline =
+              isShoulder &&
+              timelineArr.length >= 2 &&
+              timelineArr.some((p) =>
+                typeof p === "number" ? Number.isFinite(p) : Number.isFinite(Number(p?.hd))
+              );
+
+            const m = s.mistakes || {};
+            const tempoFast = Number(m.shoulderTooFast ?? 0);
+            const tempoSlow = Number(m.shoulderTooSlow ?? 0);
+            const unstable = Number(m.shoulderUnstable ?? 0);
+
+            const calibratedMargin = Number(s?.calibration?.margin);
+            const hasCalib = Number.isFinite(calibratedMargin);
+
             return (
               <div key={s.id} className="bg-white rounded-lg shadow p-6">
-                <div className="flex justify-between items-start">
-                  <div>
+                <div className="flex justify-between items-start gap-4">
+                  <div className="min-w-0">
                     <p className="text-lg font-semibold text-gray-800">
                       {s.exercise}
                     </p>
+
                     <p className="text-sm text-gray-500">
                       {new Date(s.createdAt).toLocaleString()}
                     </p>
-                    <p className="text-sm text-gray-500 mt-1">
-                      Duration:{" "}
-                      <span className="font-semibold">{s.durationSec ?? 0}s</span>{" "}
-                      • Tier:{" "}
-                      <span
-                        className={`inline-block text-xs px-2 py-1 rounded-full ml-1 ${tierInfo.className}`}
-                      >
-                        {s.tier ?? tierInfo.label}
+
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-500">
+                      <span>
+                        Duration:{" "}
+                        <span className="font-semibold text-gray-700">
+                          {s.durationSec ?? 0}s
+                        </span>
                       </span>
-                    </p>
+
+                      <span className="text-gray-300">•</span>
+
+                      <span>
+                        Tier:{" "}
+                        <span
+                          className={`inline-block text-xs px-2 py-1 rounded-full ${tierInfo.className}`}
+                        >
+                          {s.tier ?? tierInfo.label}
+                        </span>
+                      </span>
+
+                      {hasCalib && (
+                        <>
+                          <span className="text-gray-300">•</span>
+                          <span>
+                            Calib margin:{" "}
+                            <span className="font-semibold text-gray-700">
+                              {calibratedMargin.toFixed(3)}
+                            </span>
+                          </span>
+                        </>
+                      )}
+                    </div>
+
+                    {hasTimeline && (
+                      <div className="mt-4 p-3 border rounded-lg bg-gray-50">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-xs text-gray-500">
+                            Symmetry timeline (spikes = uneven arms)
+                          </div>
+
+                          <div className="text-blue-700">
+                            {/* Sparkline v2 can take timeline objects directly */}
+                            <Sparkline data={timelineArr} valueKey="hd" />
+                          </div>
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-gray-600">
+                          <span>
+                            Unstable: <span className="font-semibold">{unstable}</span>
+                          </span>
+                          <span>
+                            Too fast: <span className="font-semibold">{tempoFast}</span>
+                          </span>
+                          <span>
+                            Too slow: <span className="font-semibold">{tempoSlow}</span>
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="text-right">
+                  <div className="text-right shrink-0">
                     <p className="text-sm text-gray-500">Score</p>
-                    <p className="text-2xl font-bold text-blue-700">{s.score}</p>
+                    <p className="text-2xl font-bold text-blue-700">
+                      {s.score}
+                    </p>
                   </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div className="p-3 border rounded-lg">
                     <p className="text-gray-500">Reps</p>
                     <p className="text-lg font-bold">{s.reps}</p>

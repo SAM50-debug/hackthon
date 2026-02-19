@@ -1,3 +1,4 @@
+// FILE: src/utils/scoring.js
 export function clampScore(n) {
   return Math.max(0, Math.min(100, n));
 }
@@ -9,15 +10,14 @@ export function getDurationSec(startedAtMs, endedAtMs) {
 
 /**
  * Duration-normalized scoring:
- * badRate = badFrames / durationSec
- * 0 bad/sec => 100
- * ~1 bad/sec => ~70 (tunable)
+ * badRate = (badFrames + unstableFrames*w) / durationSec
  */
-export function computeSessionScore({ badFrames, durationSec }) {
+export function computeSessionScore({ badFrames, unstableFrames = 0, durationSec }) {
   if (!durationSec || durationSec <= 0) return 0;
 
-  const badRate = badFrames / durationSec;
-  const score = 100 - badRate * 30;
+  const unstableWeight = 0.6; // tweak
+  const badRate = (badFrames + unstableFrames * unstableWeight) / durationSec;
 
+  const score = 100 - badRate * 30;
   return clampScore(Math.round(score));
 }
