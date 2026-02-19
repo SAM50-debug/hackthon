@@ -62,10 +62,12 @@ const CameraView = forwardRef(function CameraView({ isActive }, videoRef) {
   }, [isActive]);
 
   return (
-    <div className="w-full">
+    <div className="w-full h-full relative overflow-hidden rounded-2xl bg-stone-900">
       {error ? (
-        <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg">
-          {error}
+        <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
+            <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg max-w-sm">
+                {error}
+            </div>
         </div>
       ) : (
         <video
@@ -73,7 +75,7 @@ const CameraView = forwardRef(function CameraView({ isActive }, videoRef) {
           autoPlay
           playsInline
           muted
-          className="w-full max-w-2xl rounded-lg border border-gray-200 bg-black"
+          className="w-full h-full object-cover"
         />
       )}
     </div>

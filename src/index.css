@@ -2,7 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body, #root {
+@layer base {
+  body {
+    @apply bg-stone-50 text-stone-900 antialiased selection:bg-stone-200 selection:text-stone-900;
+  }
+}
+
+html,
+body,
+#root {
   height: 100%;
 }
 body {
