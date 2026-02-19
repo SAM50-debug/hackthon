@@ -28,6 +28,7 @@ export default function Coach() {
   // timeline sampling (for sparkline)
   const timelineRef = useRef([]); // [{t, hd}]
   const lastSampleAtRef = useRef(0);
+  const unstableRef = useRef(false);
 
   useEffect(() => {
     const onVis = () => setAppPaused(document.hidden);
@@ -264,9 +265,12 @@ export default function Coach() {
 
       if (shoulderWindow.size() >= 10) {
         const std = computeStdDev(shoulderWindow.getValues());
-        const unstable = std > Math.max(0.01, margin * 0.6) // dynamic threshold
+        const unstable = std > Math.max(0.01, margin * 0.6); // dynamic threshold ✅
 
-        if (unstable) {
+        // Count as an "event" only when it flips stable -> unstable
+        if (unstable && !unstableRef.current) {
+          unstableRef.current = true;
+
           setMetrics((m) => ({
             ...m,
             unstableFrames: m.unstableFrames + 1,
@@ -276,10 +280,17 @@ export default function Coach() {
             },
           }));
         }
+
+        // Reset when it becomes stable again
+        if (!unstable && unstableRef.current) {
+          unstableRef.current = false;
+        }
       }
     } else {
       shoulderWindow.reset();
-    }
+      unstableRef.current = false;
+  }
+
 
     // Frame-based errors (only while moving)
     if (attemptingRaise) {

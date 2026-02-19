@@ -1,3 +1,4 @@
+// FILE: src/components/CameraView.jsx
 import { useEffect, useRef, useState, forwardRef } from "react";
 
 const CameraView = forwardRef(function CameraView({ isActive }, videoRef) {
@@ -5,71 +6,58 @@ const CameraView = forwardRef(function CameraView({ isActive }, videoRef) {
   const streamRef = useRef(null);
   const [error, setError] = useState(null);
 
-  // Pick a stable ref object once
   const activeRef = videoRef ?? internalRef;
 
-  async function startCamera() {
-    setError(null);
+  useEffect(() => {
+    let cancelled = false;
 
-    try {
-      // Stop any existing stream first (important for resume)
+    async function startCamera() {
+      setError(null);
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user" },
+          audio: false,
+        });
+
+        // If we became inactive while awaiting getUserMedia, immediately stop.
+        if (cancelled || !isActive) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        streamRef.current = stream;
+
+        if (activeRef.current) {
+          activeRef.current.srcObject = stream;
+          // helps some browsers
+          activeRef.current.play?.().catch(() => {});
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError("Camera access denied or not available.");
+          console.error(err);
+        }
+      }
+    }
+
+    function stopCamera() {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       }
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user" },
-        audio: false,
-      });
-
-      streamRef.current = stream;
-
       if (activeRef.current) {
-        activeRef.current.srcObject = stream;
-
-        // Some browsers need an explicit play() after tab resume
-        const p = activeRef.current.play?.();
-        if (p && typeof p.catch === "function") p.catch(() => { });
+        activeRef.current.srcObject = null;
       }
-    } catch (err) {
-      setError("Camera access denied or not available.");
-      console.error(err);
     }
-  }
 
-  function stopCamera() {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    if (activeRef.current) {
-      activeRef.current.srcObject = null;
-    }
-  }
-
-  // Start/stop based on isActive
-  useEffect(() => {
     if (isActive) startCamera();
     else stopCamera();
 
-    return () => stopCamera();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive]);
-
-  // ✅ Resume camera when returning to tab
-  useEffect(() => {
-    if (!isActive) return;
-
-    const onVis = () => {
-      if (!document.hidden) {
-        // when tab becomes visible again, restart camera stream
-        startCamera();
-      }
+    return () => {
+      cancelled = true;
+      stopCamera();
     };
-
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive]);
 

@@ -82,10 +82,8 @@ export default function History() {
 
                       <span>
                         Tier:{" "}
-                        <span
-                          className={`inline-block text-xs px-2 py-1 rounded-full ${tierInfo.className}`}
-                        >
-                          {s.tier ?? tierInfo.label}
+                        <span className={`inline-block text-xs px-2 py-1 rounded-full ml-1 ${tierInfo.className}`}>
+                          {tierInfo.label}
                         </span>
                       </span>
 

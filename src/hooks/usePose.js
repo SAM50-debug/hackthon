@@ -1,19 +1,16 @@
+// FILE: src/hooks/usePose.js
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPoseEngine } from "../lib/pose/poseEngine";
 
 export default function usePose({ videoRef, enabled }) {
   const [landmarks, setLandmarks] = useState(null);
+  const [paused, setPaused] = useState(false);
 
-  const pausedRef = useRef(false);
   const runningRef = useRef(false);
   const rafRef = useRef(null);
-  const inFlightRef = useRef(false);
 
-  // Auto-pause when tab hidden; resume when visible
   useEffect(() => {
-    const onVis = () => {
-      pausedRef.current = document.hidden;
-    };
+    const onVis = () => setPaused(document.hidden);
     onVis();
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
@@ -28,59 +25,38 @@ export default function usePose({ videoRef, enabled }) {
   }, []);
 
   useEffect(() => {
-    const shouldRun = enabled && !pausedRef.current;
+    const shouldRun = enabled && !paused;
 
     const stop = () => {
       runningRef.current = false;
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
-      inFlightRef.current = false;
-      // NOTE: don’t nuke landmarks here — looks like “stuck”.
-      // If you want overlay hidden, do it in Coach via overlayLandmarks.
     };
 
-    // If not allowed to run, stop.
     if (!shouldRun) {
       stop();
+      // optional: keep last landmarks, or clear if you prefer
+      // setLandmarks(null);
       return;
     }
 
-    // If already running, do nothing.
-    if (runningRef.current) return;
-
+    // IMPORTANT: allow restarting cleanly
+    stop();
     runningRef.current = true;
 
     const loop = async () => {
-      // Hard stop gate (also stops after tab hidden)
-      if (!runningRef.current || pausedRef.current || !enabled) {
-        stop();
-        return;
-      }
+      if (!runningRef.current) return;
 
       const video = videoRef?.current;
-      if (!video) {
+      if (!video || video.readyState < 2) {
         rafRef.current = requestAnimationFrame(loop);
         return;
       }
 
-      if (video.readyState < 2) {
-        rafRef.current = requestAnimationFrame(loop);
-        return;
-      }
-
-      // Prevent overlapping sends
-      if (inFlightRef.current) {
-        rafRef.current = requestAnimationFrame(loop);
-        return;
-      }
-
-      inFlightRef.current = true;
       try {
         await pose.send({ image: video });
       } catch {
         // ignore transient errors
-      } finally {
-        inFlightRef.current = false;
       }
 
       rafRef.current = requestAnimationFrame(loop);
@@ -88,8 +64,8 @@ export default function usePose({ videoRef, enabled }) {
 
     rafRef.current = requestAnimationFrame(loop);
 
-    return () => stop();
-  }, [enabled, pose, videoRef]);
+    return stop;
+  }, [enabled, paused, pose, videoRef]);
 
   return { landmarks };
 }
