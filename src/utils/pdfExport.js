@@ -115,8 +115,9 @@ export async function exportSessionsToPDF(sessions) {
         .filter(([, count]) => count > 0)
         .sort(([, a], [, b]) => b - a)
         .slice(0, 3)
-        .map(([k, v]) => `${k.replace(/([A-Z])/g, " $1").toLowerCase()}: ${v}`);
-
+        .map(([k, v]) =>
+          `${k.replace(/([A-Z])/g, " $1").trim().toLowerCase()}: ${v}`
+        );
       if (topMistakes.length) {
         ensureSpace(7);
         doc.setFontSize(9);
