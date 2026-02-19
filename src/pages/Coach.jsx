@@ -1,3 +1,4 @@
+// FILE: src/pages/Coach.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   computeRepScore,
@@ -22,23 +23,24 @@ export default function Coach() {
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [sessionActive, setSessionActive] = useState(false);
 
-  // timing (eslint-safe: no Date.now() during render)
   const [startedAt, setStartedAt] = useState(null);
   const [nowMs, setNowMs] = useState(0);
 
-  // app pause (tab hidden)
   const [appPaused, setAppPaused] = useState(false);
 
   // timeline sampling (for sparkline)
   const timelineRef = useRef([]); // [{t, hd}]
   const lastSampleAtRef = useRef(0);
-  const unstableRef = useRef(false);
 
-  // NEW: Analytics Refs (No re-renders)
+  // instability event debounce
+  const lastUnstableAtRef = useRef(0);
+  const unstableCooldownMs = 500;
+
+  // Analytics refs (no re-renders)
   const repScoresRef = useRef([]);
   const currentRepRef = useRef({
     peakAsymmetry: 0,
-    unstableFrames: 0,
+    unstableEvents: 0, // ✅ count events, not frames
     repFrames: 0,
     startMs: null,
   });
@@ -50,12 +52,10 @@ export default function Coach() {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
-  // set initial nowMs once after mount
   useEffect(() => {
     setNowMs(Date.now());
   }, []);
 
-  // tick time ONLY while session active & not paused
   useEffect(() => {
     if (!sessionActive || appPaused) return;
     const id = setInterval(() => setNowMs(Date.now()), 250);
@@ -69,21 +69,16 @@ export default function Coach() {
     enabled: sessionActive && !appPaused && !!selectedExercise,
   });
 
-  // show overlay only while active + not paused
   const overlayLandmarks = sessionActive && !appPaused ? landmarks : null;
 
-  // counters
   const squatCounter = useMemo(() => createRepCounter(), []);
   const shoulderCounter = useMemo(() => createShoulderRepCounter(), []);
 
-  // EMA filters
   const leftElbowY = useMemo(() => createEMA(0.35), []);
   const rightElbowY = useMemo(() => createEMA(0.35), []);
 
-  // stability window (rolling std dev of elbow heightDiff)
   const shoulderWindow = useMemo(() => createRollingWindow(15), []);
 
-  // calibration state
   const [calibration, setCalibration] = useState({
     active: false,
     ready: false,
@@ -92,14 +87,12 @@ export default function Coach() {
     margin: 0.03,
   });
 
-  // squat UI state
   const [squat, setSquat] = useState({
     kneeAngle: null,
     reps: 0,
     phase: "UP",
   });
 
-  // shoulder UI state
   const [shoulder, setShoulder] = useState({
     reps: 0,
     phase: "DOWN",
@@ -108,11 +101,10 @@ export default function Coach() {
     symmetryOk: true,
   });
 
-  // metrics
   const [metrics, setMetrics] = useState({
     totalFrames: 0,
     badFrames: 0,
-    unstableFrames: 0,
+    unstableFrames: 0, // (kept for session score)
     mistakes: {
       squatTooHigh: 0,
       squatUnstable: 0,
@@ -160,7 +152,7 @@ export default function Coach() {
     }));
   }, [landmarks, selectedExercise, squatCounter, sessionActive]);
 
-  // ---- Shoulder Raise Logic (EMA + calibration + stability + tempo + timeline) ----
+  // ---- Shoulder Raise Logic ----
   useEffect(() => {
     if (!landmarks) return;
     if (selectedExercise !== "Shoulder Raise") return;
@@ -182,7 +174,6 @@ export default function Coach() {
       return;
     }
 
-    // EMA smooth elbows
     const lY = leftElbowY.next(leftElbow.y);
     const rY = rightElbowY.next(rightElbow.y);
     if (lY == null || rY == null) return;
@@ -224,7 +215,6 @@ export default function Coach() {
       return;
     }
 
-    // fallback margin (if not calibrated yet)
     const shoulderWidth = Math.abs(rightShoulder.x - leftShoulder.x);
     const dynamicBase = Math.max(0.02, Math.min(0.06, shoulderWidth * 0.15));
     const margin = calibration.ready ? calibration.margin : dynamicBase;
@@ -254,79 +244,65 @@ export default function Coach() {
 
     const attemptingRaise = leftUp || rightUp || result.phase === "UP";
 
-    // 1. UPDATE METRICS FOR CURRENT REP
+    // ---- Analytics: track rep frames + peak asymmetry ----
     if (attemptingRaise) {
-      // Capture start of rep if not set
-      if (currentRepRef.current.startMs === null) {
+      if (currentRepRef.current.startMs == null) {
         currentRepRef.current.startMs = Date.now();
       }
-
-      currentRepRef.current.repFrames++;
-
-      // Track Peak Asymmetry
+      currentRepRef.current.repFrames += 1;
       currentRepRef.current.peakAsymmetry = Math.max(
-          currentRepRef.current.peakAsymmetry,
-          heightDiff
+        currentRepRef.current.peakAsymmetry,
+        heightDiff
       );
     }
 
-    // Timeline sampling (every ~200ms while active)
+    // Timeline sampling
     if (attemptingRaise) {
       const now = Date.now();
       const last = lastSampleAtRef.current || 0;
       if (now - last >= 200) {
         lastSampleAtRef.current = now;
         const t = startedAt ? Math.max(0, Math.round((now - startedAt) / 1000)) : 0;
-
-        // store normalized symmetry metric: heightDiff (smaller=better)
         timelineRef.current.push({ t, hd: Number(heightDiff.toFixed(4)) });
-
-        // cap timeline size (keeps localStorage light)
         if (timelineRef.current.length > 400) {
           timelineRef.current.splice(0, timelineRef.current.length - 400);
         }
       }
     }
 
-    // Stability / variance (ONLY while moving; reset when idle)
+    // Stability / variance -> count instability as events (debounced)
     if (attemptingRaise) {
       shoulderWindow.push(heightDiff);
 
       if (shoulderWindow.size() >= 10) {
         const std = computeStdDev(shoulderWindow.getValues());
-        const unstable = std > Math.max(0.01, margin * 0.6); // dynamic threshold ✅
+        const unstable = std > Math.max(0.01, margin * 0.6); // ✅ semicolon
 
         if (unstable) {
-          // NEW: Count unstable frames for this rep
-          currentRepRef.current.unstableFrames++;
-        }
+          const now = Date.now();
+          if (now - (lastUnstableAtRef.current || 0) >= unstableCooldownMs) {
+            lastUnstableAtRef.current = now;
 
-        // Count as an "event" only when it flips stable -> unstable
-        if (unstable && !unstableRef.current) {
-          unstableRef.current = true;
+            // ✅ increment instability event count for rep scoring
+            currentRepRef.current.unstableEvents += 1;
 
-          setMetrics((m) => ({
-            ...m,
-            unstableFrames: m.unstableFrames + 1,
-            mistakes: {
-              ...m.mistakes,
-              shoulderUnstable: m.mistakes.shoulderUnstable + 1,
-            },
-          }));
-        }
-
-        // Reset when it becomes stable again
-        if (!unstable && unstableRef.current) {
-          unstableRef.current = false;
+            setMetrics((m) => ({
+              ...m,
+              unstableFrames: m.unstableFrames + 1,
+              mistakes: {
+                ...m.mistakes,
+                shoulderUnstable: m.mistakes.shoulderUnstable + 1,
+              },
+            }));
+          }
         }
       }
     } else {
       shoulderWindow.reset();
-      unstableRef.current = false;
+      lastUnstableAtRef.current = 0;
     }
 
-
-    // Frame-based errors (only while moving)
+    // Frame-based errors
     if (attemptingRaise) {
       const notHighEnough = !bothUp && result.phase === "UP";
       const asymmetry = !symmetryOk && result.phase === "UP";
@@ -344,9 +320,10 @@ export default function Coach() {
       }));
     }
 
-    // Tempo scoring (only when rep completes)
+    // Rep complete -> compute rep score
     if (result.lastRepDurationSec != null) {
       const d = result.lastRepDurationSec;
+
       const tooFast = d < 0.5;
       const tooSlow = d > 4.0;
 
@@ -361,29 +338,26 @@ export default function Coach() {
         }));
       }
 
-      // NEW: ANALYTICS - Compute Rep Score
       const repMetrics = {
-          peakHeightDiff: currentRepRef.current.peakAsymmetry,
-          unstableFrameCount: currentRepRef.current.unstableFrames,
-          totalFrames: currentRepRef.current.repFrames,
-          durationSec: d,
-          margin: calibration.ready ? calibration.margin : 0.05,
+        peakHeightDiff: currentRepRef.current.peakAsymmetry,
+        unstableFrameCount: currentRepRef.current.unstableEvents, // ✅ events
+        totalFrames: currentRepRef.current.repFrames,
+        durationSec: d,
+        margin: calibration.ready ? calibration.margin : 0.05,
       };
 
       const repAnalysis = computeRepScore(repMetrics);
-      // Append extra context for storage/debugging
+
       repScoresRef.current.push({
         ...repAnalysis,
-        durationSec: d,
-        repIndex: repScoresRef.current.length + 1
+        repIndex: repScoresRef.current.length + 1,
       });
 
-      // Reset for next rep
       currentRepRef.current = {
-          peakAsymmetry: 0,
-          unstableFrames: 0,
-          repFrames: 0,
-          startMs: null,
+        peakAsymmetry: 0,
+        unstableEvents: 0,
+        repFrames: 0,
+        startMs: null,
       };
     }
   }, [
@@ -412,10 +386,15 @@ export default function Coach() {
 
     timelineRef.current = [];
     lastSampleAtRef.current = 0;
-    
-    // Reset Analytics
+    lastUnstableAtRef.current = 0;
+
     repScoresRef.current = [];
-    currentRepRef.current = { peakAsymmetry: 0, unstableFrames: 0, repFrames: 0, startMs: null };
+    currentRepRef.current = {
+      peakAsymmetry: 0,
+      unstableEvents: 0,
+      repFrames: 0,
+      startMs: null,
+    };
 
     setSquat({ kneeAngle: null, reps: 0, phase: "UP" });
     setShoulder({
@@ -502,10 +481,15 @@ export default function Coach() {
 
     timelineRef.current = [];
     lastSampleAtRef.current = 0;
-    
-    // Reset Analytics
+    lastUnstableAtRef.current = 0;
+
     repScoresRef.current = [];
-    currentRepRef.current = { peakAsymmetry: 0, unstableFrames: 0, repFrames: 0, startMs: null };
+    currentRepRef.current = {
+      peakAsymmetry: 0,
+      unstableEvents: 0,
+      repFrames: 0,
+      startMs: null,
+    };
 
     setSquat({ kneeAngle: null, reps: 0, phase: "UP" });
     setShoulder({
@@ -569,20 +553,20 @@ export default function Coach() {
     });
 
     const tier = getPerformanceTier(finalScore).label;
+    const isShoulder = selectedExercise === "Shoulder Raise";
 
-    // NEW: Analytics Post-Processing
-    const repScores = repScoresRef.current;
-    const fatigue = computeFatigueTrend(repScores);
-    
-    // Prepare ephemeral object for summary engine
-    const sessionForSummary = {
-        fatigue,
-        repScores,
-        mistakes: metrics.mistakes,
-        score: finalScore
-    };
-    
-    const aiSummary = sessionSummaryEngine(sessionForSummary);
+    // ✅ Only run analytics when Shoulder Raise
+    const repScores = isShoulder ? repScoresRef.current : null;
+    const fatigue = isShoulder ? computeFatigueTrend(repScoresRef.current) : null;
+
+    const aiSummary = isShoulder
+      ? sessionSummaryEngine({
+          fatigue,
+          repScores: repScoresRef.current,
+          mistakes: metrics.mistakes,
+          score: finalScore,
+        })
+      : null;
 
     const session = {
       id: crypto.randomUUID(),
@@ -593,15 +577,11 @@ export default function Coach() {
       durationSec,
       createdAt: new Date().toISOString(),
       mistakes: metrics.mistakes,
-      calibration: calibration.ready ? { margin: calibration.margin } : null,
-
-      // ✅ sparkline data
-      timeline: timelineRef.current,
-      
-      // ✅ Advanced Analytics Fields
+      calibration: isShoulder && calibration.ready ? { margin: calibration.margin } : null,
+      timeline: isShoulder ? timelineRef.current : null,
       repScores,
       fatigue,
-      aiSummary
+      aiSummary,
     };
 
     saveSession(session);
@@ -614,10 +594,7 @@ export default function Coach() {
         Coaching Session
       </h2>
 
-      <ExerciseSelector
-        selected={selectedExercise}
-        onSelect={setSelectedExercise}
-      />
+      <ExerciseSelector selected={selectedExercise} onSelect={setSelectedExercise} />
 
       {sessionActive && appPaused && (
         <div className="mt-4 mb-2 p-3 rounded-lg border bg-yellow-50 text-yellow-800">
@@ -668,9 +645,7 @@ export default function Coach() {
                 <div className="px-4 py-2 rounded-lg border bg-white flex items-center gap-2">
                   <span className="text-gray-500 text-sm">Score</span>
                   <span className="font-bold">{score}</span>
-                  <span
-                    className={`text-xs px-2 py-1 rounded-full ${tierInfo.className}`}
-                  >
+                  <span className={`text-xs px-2 py-1 rounded-full ${tierInfo.className}`}>
                     {tierInfo.label}
                   </span>
                 </div>
@@ -689,9 +664,7 @@ export default function Coach() {
                       <span className="text-gray-500 text-sm mr-2">
                         Calibrated margin
                       </span>
-                      <span className="font-bold">
-                        {calibration.margin.toFixed(3)}
-                      </span>
+                      <span className="font-bold">{calibration.margin.toFixed(3)}</span>
                     </div>
                   )}
               </div>
@@ -710,9 +683,7 @@ export default function Coach() {
                 <div className="mt-6 grid grid-cols-3 gap-4 text-sm">
                   <div className="p-3 bg-white border rounded-lg">
                     <p className="text-gray-500">Knee Angle</p>
-                    <p className="text-lg font-bold">
-                      {squat.kneeAngle ?? "--"}°
-                    </p>
+                    <p className="text-lg font-bold">{squat.kneeAngle ?? "--"}°</p>
                   </div>
                   <div className="p-3 bg-white border rounded-lg">
                     <p className="text-gray-500">Phase</p>
@@ -729,9 +700,7 @@ export default function Coach() {
                 <div className="mt-6 grid grid-cols-3 gap-4 text-sm">
                   <div className="p-3 bg-white border rounded-lg">
                     <p className="text-gray-500">Symmetry</p>
-                    <p className="text-lg font-bold">
-                      {shoulder.symmetryOk ? "OK" : "Fix"}
-                    </p>
+                    <p className="text-lg font-bold">{shoulder.symmetryOk ? "OK" : "Fix"}</p>
                   </div>
                   <div className="p-3 bg-white border rounded-lg">
                     <p className="text-gray-500">Phase</p>
@@ -745,8 +714,7 @@ export default function Coach() {
               )}
 
               <p className="mt-4 text-xs text-gray-400">
-                Landmarks detected:{" "}
-                {overlayLandmarks ? overlayLandmarks.length : 0}
+                Landmarks detected: {overlayLandmarks ? overlayLandmarks.length : 0}
               </p>
             </>
           ) : (
@@ -756,8 +724,7 @@ export default function Coach() {
       </div>
 
       <p className="text-xs text-gray-400 mt-8 max-w-2xl">
-        This tool is for educational purposes only and does not provide medical
-        advice.
+        This tool is for educational purposes only and does not provide medical advice.
       </p>
     </div>
   );

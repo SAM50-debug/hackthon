@@ -14,8 +14,11 @@ export default function History() {
 
         <div className="flex gap-3">
           <button
+            disabled={!sessions || sessions.length === 0}
             onClick={() => exportSessionsToPDF(sessions)}
-            className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-medium"
+            className={`px-4 py-2 rounded-lg font-medium ${
+              sessions?.length ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-gray-300 text-gray-600 cursor-not-allowed"
+            }`}
           >
             Download PDF
           </button>
