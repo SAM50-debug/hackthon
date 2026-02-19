@@ -1,99 +1,82 @@
 // FILE: src/utils/pdfExport.js
-import { jsPDF } from "jspdf";
 
 /**
  * Export Session History to PDF Client-Side
- * Dependency: npm install jspdf
+ * jsPDF is dynamically imported to avoid bloating main bundle.
  */
-export function exportSessionsToPDF(sessions) {
+export async function exportSessionsToPDF(sessions) {
   if (!sessions || sessions.length === 0) {
     alert("No sessions to export.");
     return;
   }
 
+  // ✅ Lazy-load jsPDF only when needed
+  const { jsPDF } = await import("jspdf");
+
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const marginX = 14;
-  const bottomLimit = pageHeight - 20; // 20mm bottom margin
-  
+  const bottomLimit = pageHeight - 20;
+
   let y = 20;
 
-  // Helper: Pagination Check
-  function ensureSpace(heightInfo) {
-    if (y + heightInfo > bottomLimit) {
+  function ensureSpace(h) {
+    if (y + h > bottomLimit) {
       doc.addPage();
       y = 20;
     }
   }
 
-  // -- Header --
   doc.setFontSize(18);
   doc.setTextColor(40, 40, 40);
   doc.text("PoseRx Session History", marginX, y);
-  
+
   doc.setFontSize(10);
   doc.setTextColor(100, 100, 100);
   y += 6;
   doc.text(`Generated: ${new Date().toLocaleString()}`, marginX, y);
   y += 10;
 
-  // -- Sessions Loop --
   sessions.forEach((s) => {
-    // Determine heights of dynamic blocks
-    let summaryHeight = 0;
     let splitSummary = [];
-    
+    let summaryHeight = 0;
+
     if (s.aiSummary) {
       splitSummary = doc.splitTextToSize(s.aiSummary, pageWidth - 30);
-      summaryHeight = (splitSummary.length * 5) + 2;
+      summaryHeight = splitSummary.length * 5 + 2;
     }
 
-    // Rough Height Estimate for Non-Summary Blocks:
-    // Container Line (8) + Title (7) + Stats (7) + Extra (6?) + Timeline (5?) + Faults (6?) + Spacer (4)
-    // ~ 45mm base height
-    
-    // Check space for the initial block (Title + Stats)
     ensureSpace(25);
 
-    // Session Container Line
     doc.setDrawColor(200, 200, 200);
     doc.line(marginX, y, pageWidth - 14, y);
     y += 8;
 
-    // Title Row
     doc.setFontSize(14);
-    doc.setTextColor(0, 50, 150); // Blue
-    doc.text(s.exercise, marginX, y);
+    doc.setTextColor(0, 50, 150);
+    doc.text(s.exercise ?? "Session", marginX, y);
 
     doc.setFontSize(10);
     doc.setTextColor(60, 60, 60);
-    // Local Time
     const dateObj = new Date(s.createdAt);
     const dateStr = !isNaN(dateObj.getTime()) ? dateObj.toLocaleString() : "Unknown Date";
     doc.text(dateStr, pageWidth - 14, y, { align: "right" });
     y += 7;
 
-    // Stats Row
     doc.setFontSize(11);
     doc.setTextColor(0, 0, 0);
     const scoreText = `Score: ${s.score ?? 0} (${s.tier ?? "-"})`;
     const repsText = `Reps: ${s.reps ?? 0}`;
     const durText = `Duration: ${s.durationSec ?? 0}s`;
-    
     doc.text(`${scoreText}   |   ${repsText}   |   ${durText}`, marginX, y);
     y += 7;
 
-    // Advanced Stats (Calibration / Fatigue)
-    let extraStats = [];
-    if (Number.isFinite(s.calibration?.margin)) {
-      extraStats.push(`Calib Margin: ${s.calibration.margin.toFixed(3)}`);
-    }
-    if (s.fatigue?.trend) {
-      extraStats.push(`Fatigue: ${s.fatigue.trend}`);
-    }
-    
-    if (extraStats.length > 0) {
+    const extraStats = [];
+    if (Number.isFinite(s.calibration?.margin)) extraStats.push(`Calib Margin: ${s.calibration.margin.toFixed(3)}`);
+    if (s.fatigue?.trend) extraStats.push(`Fatigue: ${s.fatigue.trend}`);
+
+    if (extraStats.length) {
       ensureSpace(6);
       doc.setFontSize(9);
       doc.setTextColor(100, 100, 100);
@@ -101,28 +84,20 @@ export function exportSessionsToPDF(sessions) {
       y += 6;
     }
 
-    // AI Summary
-    if (splitSummary.length > 0) {
-      // If it fits completely, write it. Else page break.
+    if (splitSummary.length) {
       ensureSpace(summaryHeight);
-      
-      // If still too large (longer than a full page? unlikely for <4 sentences), 
-      // standard ensureSpace handles normal flows. 
-      // If huge, we'd need loop logic, but specs say 2-4 sentences max.
-      
       doc.setFontSize(10);
       doc.setTextColor(40, 40, 40);
       doc.text(splitSummary, marginX, y);
       y += summaryHeight;
     }
 
-    // Timeline Summary
-    if (s.timeline && Array.isArray(s.timeline) && s.timeline.length > 0) {
+    if (Array.isArray(s.timeline) && s.timeline.length) {
       const values = s.timeline
-        .map(p => (typeof p === "number" ? p : p?.hd))
-        .filter(v => Number.isFinite(v));
+        .map((p) => (typeof p === "number" ? p : p?.hd))
+        .filter((v) => Number.isFinite(v));
 
-      if (values.length > 0) {
+      if (values.length) {
         ensureSpace(7);
         const min = Math.min(...values).toFixed(3);
         const max = Math.max(...values).toFixed(3);
@@ -135,32 +110,26 @@ export function exportSessionsToPDF(sessions) {
       }
     }
 
-    // Top Mistakes
     if (s.mistakes) {
       const topMistakes = Object.entries(s.mistakes)
         .filter(([, count]) => count > 0)
         .sort(([, a], [, b]) => b - a)
         .slice(0, 3)
-        .map(([k, v]) => `${k.replace(/([A-Z])/g, ' $1').toLowerCase()}: ${v}`);
+        .map(([k, v]) => `${k.replace(/([A-Z])/g, " $1").toLowerCase()}: ${v}`);
 
-      if (topMistakes.length > 0) {
+      if (topMistakes.length) {
         ensureSpace(7);
         doc.setFontSize(9);
-        doc.setTextColor(150, 50, 50); // Red
+        doc.setTextColor(150, 50, 50);
         doc.text(`Faults: ${topMistakes.join(", ")}`, marginX, y);
         y += 6;
       }
     }
 
-    y += 4; // Spacer
+    y += 4;
   });
-  
-  // Format Date for Filename: YYYY-MM-DD
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const filenameDate = `${year}-${month}-${day}`;
 
+  const now = new Date();
+  const filenameDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   doc.save(`poserx-history-${filenameDate}.pdf`);
 }
