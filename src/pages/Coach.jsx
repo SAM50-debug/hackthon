@@ -1,5 +1,9 @@
-// FILE: src/pages/Coach.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  computeRepScore,
+  computeFatigueTrend,
+  sessionSummaryEngine,
+} from "../utils/analytics";
 import ExerciseSelector from "../components/ExerciseSelector";
 import CameraView from "../components/CameraView";
 import PoseOverlay from "../components/PoseOverlay";
@@ -29,6 +33,15 @@ export default function Coach() {
   const timelineRef = useRef([]); // [{t, hd}]
   const lastSampleAtRef = useRef(0);
   const unstableRef = useRef(false);
+
+  // NEW: Analytics Refs (No re-renders)
+  const repScoresRef = useRef([]);
+  const currentRepRef = useRef({
+    peakAsymmetry: 0,
+    unstableFrames: 0,
+    repFrames: 0,
+    startMs: null,
+  });
 
   useEffect(() => {
     const onVis = () => setAppPaused(document.hidden);
@@ -241,6 +254,22 @@ export default function Coach() {
 
     const attemptingRaise = leftUp || rightUp || result.phase === "UP";
 
+    // 1. UPDATE METRICS FOR CURRENT REP
+    if (attemptingRaise) {
+      // Capture start of rep if not set
+      if (currentRepRef.current.startMs === null) {
+        currentRepRef.current.startMs = Date.now();
+      }
+
+      currentRepRef.current.repFrames++;
+
+      // Track Peak Asymmetry
+      currentRepRef.current.peakAsymmetry = Math.max(
+          currentRepRef.current.peakAsymmetry,
+          heightDiff
+      );
+    }
+
     // Timeline sampling (every ~200ms while active)
     if (attemptingRaise) {
       const now = Date.now();
@@ -267,6 +296,11 @@ export default function Coach() {
         const std = computeStdDev(shoulderWindow.getValues());
         const unstable = std > Math.max(0.01, margin * 0.6); // dynamic threshold ✅
 
+        if (unstable) {
+          // NEW: Count unstable frames for this rep
+          currentRepRef.current.unstableFrames++;
+        }
+
         // Count as an "event" only when it flips stable -> unstable
         if (unstable && !unstableRef.current) {
           unstableRef.current = true;
@@ -289,7 +323,7 @@ export default function Coach() {
     } else {
       shoulderWindow.reset();
       unstableRef.current = false;
-  }
+    }
 
 
     // Frame-based errors (only while moving)
@@ -326,6 +360,31 @@ export default function Coach() {
           },
         }));
       }
+
+      // NEW: ANALYTICS - Compute Rep Score
+      const repMetrics = {
+          peakHeightDiff: currentRepRef.current.peakAsymmetry,
+          unstableFrameCount: currentRepRef.current.unstableFrames,
+          totalFrames: currentRepRef.current.repFrames,
+          durationSec: d,
+          margin: calibration.ready ? calibration.margin : 0.05,
+      };
+
+      const repAnalysis = computeRepScore(repMetrics);
+      // Append extra context for storage/debugging
+      repScoresRef.current.push({
+        ...repAnalysis,
+        durationSec: d,
+        repIndex: repScoresRef.current.length + 1
+      });
+
+      // Reset for next rep
+      currentRepRef.current = {
+          peakAsymmetry: 0,
+          unstableFrames: 0,
+          repFrames: 0,
+          startMs: null,
+      };
     }
   }, [
     landmarks,
@@ -353,6 +412,10 @@ export default function Coach() {
 
     timelineRef.current = [];
     lastSampleAtRef.current = 0;
+    
+    // Reset Analytics
+    repScoresRef.current = [];
+    currentRepRef.current = { peakAsymmetry: 0, unstableFrames: 0, repFrames: 0, startMs: null };
 
     setSquat({ kneeAngle: null, reps: 0, phase: "UP" });
     setShoulder({
@@ -439,6 +502,10 @@ export default function Coach() {
 
     timelineRef.current = [];
     lastSampleAtRef.current = 0;
+    
+    // Reset Analytics
+    repScoresRef.current = [];
+    currentRepRef.current = { peakAsymmetry: 0, unstableFrames: 0, repFrames: 0, startMs: null };
 
     setSquat({ kneeAngle: null, reps: 0, phase: "UP" });
     setShoulder({
@@ -503,6 +570,20 @@ export default function Coach() {
 
     const tier = getPerformanceTier(finalScore).label;
 
+    // NEW: Analytics Post-Processing
+    const repScores = repScoresRef.current;
+    const fatigue = computeFatigueTrend(repScores);
+    
+    // Prepare ephemeral object for summary engine
+    const sessionForSummary = {
+        fatigue,
+        repScores,
+        mistakes: metrics.mistakes,
+        score: finalScore
+    };
+    
+    const aiSummary = sessionSummaryEngine(sessionForSummary);
+
     const session = {
       id: crypto.randomUUID(),
       exercise: selectedExercise,
@@ -516,6 +597,11 @@ export default function Coach() {
 
       // ✅ sparkline data
       timeline: timelineRef.current,
+      
+      // ✅ Advanced Analytics Fields
+      repScores,
+      fatigue,
+      aiSummary
     };
 
     saveSession(session);

@@ -2,6 +2,7 @@
 import useSessionHistory from "../hooks/useSessionHistory";
 import { getPerformanceTier } from "../utils/performance";
 import Sparkline from "../components/Sparkline";
+import { exportSessionsToPDF } from "../utils/pdfExport";
 
 export default function History() {
   const { sessions, clearAll, refresh } = useSessionHistory();
@@ -12,6 +13,13 @@ export default function History() {
         <h2 className="text-2xl font-bold text-blue-700">Session History</h2>
 
         <div className="flex gap-3">
+          <button
+            onClick={() => exportSessionsToPDF(sessions)}
+            className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-medium"
+          >
+            Download PDF
+          </button>
+          
           <button
             onClick={refresh}
             className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50"
