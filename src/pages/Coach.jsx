@@ -18,6 +18,8 @@ import { getPerformanceTier } from "../utils/performance";
 import { saveSession } from "../lib/storage/sessionStore";
 import { createEMA } from "../utils/ema";
 import { createRollingWindow, computeStdDev } from "../utils/variance";
+import { supabase } from "../lib/supabaseClient";
+import { saveSessionCloud } from "../lib/storage/sessionCloudStore";
 
 export default function Coach() {
   const [selectedExercise, setSelectedExercise] = useState(null);
@@ -540,53 +542,67 @@ export default function Coach() {
     setSessionActive(true);
   }
 
-  function endSession() {
-    if (!selectedExercise || !startedAt) return;
+  async function endSession() {
+  if (!selectedExercise || !startedAt) return;
 
-    const endMs = Date.now();
-    const durationSec = getDurationSec(startedAt, endMs);
+  const endMs = Date.now();
+  const durationSec = getDurationSec(startedAt, endMs);
 
-    const finalScore = computeSessionScore({
-      badFrames: metrics.badFrames,
-      unstableFrames: metrics.unstableFrames,
-      durationSec,
-    });
+  const finalScore = computeSessionScore({
+    badFrames: metrics.badFrames,
+    unstableFrames: metrics.unstableFrames,
+    durationSec,
+  });
 
-    const tier = getPerformanceTier(finalScore).label;
-    const isShoulder = selectedExercise === "Shoulder Raise";
+  const tier = getPerformanceTier(finalScore).label;
+  const isShoulder = selectedExercise === "Shoulder Raise";
 
-    // ✅ Only run analytics when Shoulder Raise
-    const repScores = isShoulder ? repScoresRef.current : null;
-    const fatigue = isShoulder ? computeFatigueTrend(repScoresRef.current) : null;
+  // ✅ Only run analytics when Shoulder Raise
+  const repScores = isShoulder ? repScoresRef.current : null;
+  const fatigue = isShoulder ? computeFatigueTrend(repScoresRef.current) : null;
 
-    const aiSummary = isShoulder
-      ? sessionSummaryEngine({
-          fatigue,
-          repScores: repScoresRef.current,
-          mistakes: metrics.mistakes,
-          score: finalScore,
-        })
-      : null;
+  const aiSummary = isShoulder
+    ? sessionSummaryEngine({
+        fatigue,
+        repScores: repScoresRef.current,
+        mistakes: metrics.mistakes,
+        score: finalScore,
+      })
+    : null;
 
-    const session = {
-      id: crypto.randomUUID(),
-      exercise: selectedExercise,
-      reps: selectedExercise === "Squat" ? squat.reps : shoulder.reps,
-      score: finalScore,
-      tier,
-      durationSec,
-      createdAt: new Date().toISOString(),
-      mistakes: metrics.mistakes,
-      calibration: isShoulder && calibration.ready ? { margin: calibration.margin } : null,
-      timeline: isShoulder ? timelineRef.current : null,
-      repScores,
-      fatigue,
-      aiSummary,
-    };
+  const session = {
+    id: crypto.randomUUID(),
+    exercise: selectedExercise,
+    reps: selectedExercise === "Squat" ? squat.reps : shoulder.reps,
+    score: finalScore,
+    tier,
+    durationSec,
+    createdAt: new Date().toISOString(),
+    mistakes: metrics.mistakes,
+    calibration: isShoulder && calibration.ready ? { margin: calibration.margin } : null,
+    timeline: isShoulder ? timelineRef.current : null,
+    repScores,
+    fatigue,
+    aiSummary,
+  };
 
+  // ✅ Save: Supabase if signed in, else localStorage
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    if (error) throw error;
+
+    if (data?.user) {
+      await saveSessionCloud(session);
+    } else {
+      saveSession(session);
+    }
+  } catch (e) {
+    console.error("Save failed, falling back to local:", e);
     saveSession(session);
-    setSessionActive(false);
   }
+
+  setSessionActive(false);
+}
 
   return (
     <div className="min-h-screen bg-stone-50 p-6 md:p-10 font-sans text-stone-900">
