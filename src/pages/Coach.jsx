@@ -542,67 +542,85 @@ export default function Coach() {
     setSessionActive(true);
   }
 
+ // Add these imports at top of Coach.jsx (if not already):
+  // import { supabase } from "../lib/supabaseClient";
+  // import { saveSession } from "../lib/storage/sessionStore";
+  // import { saveSessionCloud } from "../lib/storage/sessionCloudStore";
+
+  const savingRef = { current: false }; // put near other refs (or useRef(false))
+
   async function endSession() {
-  if (!selectedExercise || !startedAt) return;
+    if (!selectedExercise || !startedAt) return;
+    if (savingRef.current) return; // prevent double save
+    savingRef.current = true;
 
-  const endMs = Date.now();
-  const durationSec = getDurationSec(startedAt, endMs);
+    try {
+      const endMs = Date.now();
+      const durationSec = getDurationSec(startedAt, endMs);
 
-  const finalScore = computeSessionScore({
-    badFrames: metrics.badFrames,
-    unstableFrames: metrics.unstableFrames,
-    durationSec,
-  });
+      const finalScore = computeSessionScore({
+        badFrames: metrics.badFrames,
+        unstableFrames: metrics.unstableFrames,
+        durationSec,
+      });
 
-  const tier = getPerformanceTier(finalScore).label;
-  const isShoulder = selectedExercise === "Shoulder Raise";
+      const tier = getPerformanceTier(finalScore).label;
+      const isShoulder = selectedExercise === "Shoulder Raise";
 
-  // ✅ Only run analytics when Shoulder Raise
-  const repScores = isShoulder ? repScoresRef.current : null;
-  const fatigue = isShoulder ? computeFatigueTrend(repScoresRef.current) : null;
+      // ✅ Only run analytics when Shoulder Raise
+      const repScores = isShoulder ? repScoresRef.current : null;
+      const fatigue = isShoulder ? computeFatigueTrend(repScoresRef.current) : null;
 
-  const aiSummary = isShoulder
-    ? sessionSummaryEngine({
-        fatigue,
-        repScores: repScoresRef.current,
-        mistakes: metrics.mistakes,
+      const aiSummary = isShoulder
+        ? sessionSummaryEngine({
+            fatigue,
+            repScores: repScoresRef.current,
+            mistakes: metrics.mistakes,
+            score: finalScore,
+          })
+        : null;
+
+      const session = {
+        id: crypto.randomUUID(),
+        exercise: selectedExercise,
+        reps: selectedExercise === "Squat" ? squat.reps : shoulder.reps,
         score: finalScore,
-      })
-    : null;
+        tier,
+        durationSec,
+        createdAt: new Date().toISOString(),
+        mistakes: metrics.mistakes,
+        calibration: isShoulder && calibration.ready ? { margin: calibration.margin } : null,
+        timeline: isShoulder ? timelineRef.current : null,
+        repScores,
+        fatigue,
+        aiSummary,
+      };  
 
-  const session = {
-    id: crypto.randomUUID(),
-    exercise: selectedExercise,
-    reps: selectedExercise === "Squat" ? squat.reps : shoulder.reps,
-    score: finalScore,
-    tier,
-    durationSec,
-    createdAt: new Date().toISOString(),
-    mistakes: metrics.mistakes,
-    calibration: isShoulder && calibration.ready ? { margin: calibration.margin } : null,
-    timeline: isShoulder ? timelineRef.current : null,
-    repScores,
-    fatigue,
-    aiSummary,
-  };
+      // ✅ Save: Supabase if signed in, else localStorage
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
 
-  // ✅ Save: Supabase if signed in, else localStorage
-  try {
-    const { data, error } = await supabase.auth.getUser();
-    if (error) throw error;
+        const user = data?.session?.user;
 
-    if (data?.user) {
-      await saveSessionCloud(session);
-    } else {
-      saveSession(session);
+        if (user) {
+          // cloud-first when signed in
+          await saveSessionCloud(session);
+        } else {
+          // local fallback only when not signed in
+          saveSession(session);
+        }
+      } catch (e) {
+        console.error("Cloud save failed, falling back to local:", e);
+        saveSession(session);
+      }
+
+      setSessionActive(false);
+    } finally {
+      // allow future saves (even if errors happen)
+      savingRef.current = false;
     }
-  } catch (e) {
-    console.error("Save failed, falling back to local:", e);
-    saveSession(session);
   }
-
-  setSessionActive(false);
-}
 
   return (
     <div className="min-h-screen bg-stone-50 p-6 md:p-10 font-sans text-stone-900">
