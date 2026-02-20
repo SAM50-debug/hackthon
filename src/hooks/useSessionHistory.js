@@ -16,22 +16,26 @@ export default function useSessionHistory() {
   const refresh = useCallback(async () => {
     setLoading(true);
 
-    // IMPORTANT: never blank the UI while loading
     try {
-      const { data } = await supabase.auth.getSession();
-      const user = data?.session?.user;
+      // wait for auth to fully initialize
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-      if (user) {
-        const cloud = await loadSessionsCloud();
-        // Only replace if we actually got an array back
-        if (Array.isArray(cloud)) setSessions(cloud);
-      } else {
-        // Not signed in → stay local
+      if (!session?.user) {
+        // not signed in → local only
         setSessions(loadSessions());
+        return;
       }
-    } catch (e) {
-      // If cloud fetch fails, KEEP current sessions (prevents disappearing)
-      console.error("History refresh failed:", e);
+
+      // signed in → fetch cloud
+      const cloud = await loadSessionsCloud();
+
+      if (Array.isArray(cloud)) {
+        setSessions(cloud);
+      }
+    } catch (err) {
+      console.error("History refresh error:", err);
     } finally {
       setLoading(false);
     }
@@ -55,12 +59,15 @@ export default function useSessionHistory() {
   }, []);
 
   useEffect(() => {
-    refresh();
-
-    // Re-fetch when auth state changes (sign in/out)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      refresh();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        refresh();
+      }
     });
+
+    refresh();
 
     return () => subscription.unsubscribe();
   }, [refresh]);
