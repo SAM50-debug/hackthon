@@ -15,6 +15,9 @@ export default function Navbar() {
         <Link to="/history" className="hover:text-blue-600">
           History
         </Link>
+        <Link to="/auth" className="text-stone-500 hover:text-blue-600">
+          Sign In
+        </Link>
       </div>
     </nav>
   );
