@@ -10,22 +10,33 @@ import { supabase } from "../supabaseClient";
  */
 
 export async function getCurrentUserId() {
-  const { data, error } = await supabase.auth.getUser();
-  if (error) return null;
-  return data?.user?.id ?? null;
+  const { data } = await supabase.auth.getSession();
+  return data?.session?.user?.id ?? null;
 }
 
 export async function saveSessionCloud(session) {
   const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Not signed in");
+  if (!userId) {
+    console.error("No user ID found, not signed in");
+    throw new Error("Not signed in");
+  }
 
-  const row = {
-    user_id: userId,
-    payload: session,
-  };
+  const { data, error } = await supabase
+    .from("sessions")
+    .insert([
+      {
+        user_id: userId,
+        payload: session,
+      },
+    ])
+    .select();
 
-  const { error } = await supabase.from("sessions").insert([row]);
-  if (error) throw error;
+  if (error) {
+    console.error("Insert error:", error);
+    throw error;
+  }
+
+  console.log("Inserted session:", data);
 }
 
 export async function loadSessionsCloud() {
