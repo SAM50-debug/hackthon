@@ -13,19 +13,17 @@
   --sv-danger: #ef4444;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Sapphire Veil Theme - Dark Mode (Default preferred) */
-    --sv-bg: #0b1120;
-    --sv-surface: #1e293b;
-    --sv-elev: #0f172a;
-    --sv-text: #f8fafc;
-    --sv-muted: #94a3b8;
-    --sv-border: #334155;
-    --sv-accent: #38bdf8;
-    --sv-accent2: #0284c7;
-    --sv-success: #10b981;
-    --sv-warn: #f59e0b;
-    --sv-danger: #ef4444;
-  }
+:root[data-theme='dark'] {
+  /* Sapphire Veil Theme - Dark Mode (Default preferred) */
+  --sv-bg: #0b1120;
+  --sv-surface: #1e293b;
+  --sv-elev: #0f172a;
+  --sv-text: #f8fafc;
+  --sv-muted: #94a3b8;
+  --sv-border: #334155;
+  --sv-accent: #38bdf8;
+  --sv-accent2: #0284c7;
+  --sv-success: #10b981;
+  --sv-warn: #f59e0b;
+  --sv-danger: #ef4444;
 }

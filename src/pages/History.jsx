@@ -1,5 +1,5 @@
 // FILE: src/pages/History.jsx
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import useSessionHistory from "../hooks/useSessionHistory";
 import { getPerformanceTier } from "../utils/performance";
 import Sparkline from "../components/Sparkline";
@@ -10,6 +10,18 @@ import HistorySkeleton from "../components/skeletons/HistorySkeleton";
 export default function History() {
   const [initLoading, setInitLoading] = useState(true);
   const { sessions, clearAll, refresh } = useSessionHistory();
+  const filtersRef = useRef(null);
+
+  useLayoutEffect(() => {
+    const updateFiltersHeight = () => {
+      if (filtersRef.current) {
+        document.documentElement.style.setProperty('--filters-h', `${filtersRef.current.offsetHeight}px`);
+      }
+    };
+    updateFiltersHeight();
+    window.addEventListener('resize', updateFiltersHeight);
+    return () => window.removeEventListener('resize', updateFiltersHeight);
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => setInitLoading(false), 700);
@@ -100,7 +112,7 @@ export default function History() {
 
   return (
     <div className="min-h-screen bg-sv-bg p-6 md:p-10 font-sans text-sv-text">
-      <div className="max-w-5xl mx-auto space-y-8">
+      <div className="max-w-5xl mx-auto">
         {/* Header & Actions */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-sv-border pb-6">
           <div>
@@ -164,7 +176,7 @@ export default function History() {
 
         {/* Summary Bar */}
         {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
             <SummaryCard label="Total Sessions" value={stats.total} />
             <SummaryCard label="Last Score" value={stats.lastScore} />
             <SummaryCard label="Avg Score" value={stats.avgScore} />
@@ -174,81 +186,90 @@ export default function History() {
 
         {/* Filters & Toolbar (Dynamically Sticky under Navbar) */}
         <div 
-          className="sticky z-40 py-3 px-3 rounded-2xl flex flex-col md:flex-row gap-3 items-center justify-between mb-4 mt-2 isolate"
-          style={{ top: 'var(--nav-h, 76px)' }}
+          ref={filtersRef}
+          className="sticky z-40 mb-4 mt-6"
+          style={{ top: 'calc(var(--nav-h, 76px) + 10px)' }}
         >
-          {/* Background layer for pure blur without softening text */}
-          <div 
-            aria-hidden="true" 
-            className="absolute inset-0 z-0 bg-sv-bg/85 backdrop-blur-md border border-sv-border rounded-2xl shadow-sm"
-          ></div>
+          <div className="relative overflow-hidden rounded-2xl border border-sv-border shadow-sm">
+            {/* Blur overlay layer */}
+            <div 
+              aria-hidden="true" 
+              className="absolute inset-0 z-0 bg-sv-bg/80 backdrop-blur-md"
+            ></div>
 
-          <div className="relative z-10 flex flex-1 gap-2 w-full md:w-auto p-1">
-            <div className="relative flex-1 md:max-w-xs group">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-sv-muted group-focus-within:text-sv-muted transition-colors">
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+            {/* Content layer */}
+            <div className="relative z-10 flex flex-col md:flex-row gap-3 items-center justify-between px-4 py-3">
+              <div className="flex flex-1 gap-2 w-full md:w-auto">
+                <div className="relative flex-1 md:max-w-xs group">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-sv-muted group-focus-within:text-sv-text transition-colors">
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      ></path>
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search date or exercise..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 bg-sv-surface/70 border border-sv-border focus:bg-sv-surface rounded-xl text-sm transition-all outline-none placeholder-stone-400 text-sv-text shadow-sm focus:ring-2 focus:ring-sv-accent/50"
+                  />
+                </div>
+                <select
+                  value={exerciseFilter}
+                  onChange={(e) => setExerciseFilter(e.target.value)}
+                  className="px-4 py-2 bg-sv-surface/70 border border-sv-border hover:bg-sv-surface rounded-xl text-sm font-medium text-sv-muted focus:outline-none focus:ring-2 focus:ring-sv-accent/50 cursor-pointer transition-colors shadow-sm"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                  ></path>
-                </svg>
+                  <option value="All">All Exercises</option>
+                  <option value="Squat">Squat</option>
+                  <option value="Shoulder Raise">Shoulder Raise</option>
+                </select>
               </div>
-              <input
-                type="text"
-                placeholder="Search date or exercise..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-sv-bg border-transparent focus:bg-sv-surface border focus:border-sv-border rounded-xl text-sm transition-all outline-none placeholder-stone-400 text-sv-text"
-              />
-            </div>
-            <select
-              value={exerciseFilter}
-              onChange={(e) => setExerciseFilter(e.target.value)}
-              className="px-4 py-2 bg-sv-bg hover:bg-sv-bg border-transparent rounded-xl text-sm font-medium text-sv-muted focus:outline-none focus:ring-2 focus:ring-sv-border cursor-pointer transition-colors"
-            >
-              <option value="All">All Exercises</option>
-              <option value="Squat">Squat</option>
-              <option value="Shoulder Raise">Shoulder Raise</option>
-            </select>
-          </div>
 
-          <div className="relative z-10 flex items-center gap-3 w-full md:w-auto justify-end p-1">
-            <span className="text-xs font-semibold text-sv-muted uppercase tracking-wider hidden md:block">
-              Sort
-            </span>
-            <div className="flex bg-sv-bg p-1 rounded-xl">
-              <button
-                onClick={() => setSortBy("newest")}
-                className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${sortBy === "newest"
-                  ? "bg-sv-surface text-sv-text shadow-sm"
-                  : "text-sv-muted hover:text-sv-text"
-                  }`}
-              >
-                Newest
-              </button>
-              <button
-                onClick={() => setSortBy("best")}
-                className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${sortBy === "best"
-                  ? "bg-sv-surface text-sv-text shadow-sm"
-                  : "text-sv-muted hover:text-sv-text"
-                  }`}
-              >
-                Best Score
-              </button>
+              <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+                <span className="text-xs font-semibold text-sv-muted uppercase tracking-wider hidden md:block">
+                  Sort
+                </span>
+                <div className="flex bg-sv-surface/70 border border-sv-border p-1 rounded-xl shadow-sm">
+                  <button
+                    onClick={() => setSortBy("newest")}
+                    className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${sortBy === "newest"
+                      ? "bg-sv-surface text-sv-text shadow-sm"
+                      : "text-sv-muted hover:text-sv-text"
+                      }`}
+                  >
+                    Newest
+                  </button>
+                  <button
+                    onClick={() => setSortBy("best")}
+                    className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${sortBy === "best"
+                      ? "bg-sv-surface text-sv-text shadow-sm"
+                      : "text-sv-muted hover:text-sv-text"
+                      }`}
+                  >
+                    Best Score
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
+        {/* Spacer for sticky header spacing */}
+        <div aria-hidden style={{ height: 'var(--filters-h)' }} className="w-full shrink-0" />
+
         {/* Sessions List */}
         {filteredSessions.length === 0 ? (
-          <div className="text-center py-24 bg-sv-surface rounded-3xl border border-sv-border border-dashed">
+          <div className="text-center py-24 bg-sv-surface rounded-3xl border border-sv-border border-dashed mt-6">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-sv-bg mb-4 text-sv-muted">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -265,7 +286,7 @@ export default function History() {
             </p>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-6 mt-6">
             {filteredSessions.map((s) => {
               const scoreNum = Number(s.score ?? 0);
               const tierInfo = getPerformanceTier(scoreNum);
