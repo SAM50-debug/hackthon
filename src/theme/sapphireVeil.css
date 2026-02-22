@@ -1,0 +1,31 @@
+:root {
+  /* Sapphire Veil Theme - Light Mode Defaults (Morandi minimal) */
+  --sv-bg: #f8fafc; /* very light cool gray */
+  --sv-surface: #ffffff;
+  --sv-elev: #f1f5f9;
+  --sv-text: #0f172a;
+  --sv-muted: #64748b;
+  --sv-border: #e2e8f0;
+  --sv-accent: #0ea5e9; /* Muted cyan/sapphire */
+  --sv-accent2: #0284c7;
+  --sv-success: #10b981;
+  --sv-warn: #f59e0b;
+  --sv-danger: #ef4444;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Sapphire Veil Theme - Dark Mode (Default preferred) */
+    --sv-bg: #0b1120;
+    --sv-surface: #1e293b;
+    --sv-elev: #0f172a;
+    --sv-text: #f8fafc;
+    --sv-muted: #94a3b8;
+    --sv-border: #334155;
+    --sv-accent: #38bdf8;
+    --sv-accent2: #0284c7;
+    --sv-success: #10b981;
+    --sv-warn: #f59e0b;
+    --sv-danger: #ef4444;
+  }
+}

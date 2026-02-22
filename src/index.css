@@ -1,18 +1,83 @@
+@import './theme/sapphireVeil.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   body {
-    @apply bg-stone-50 text-stone-900 antialiased selection:bg-stone-200 selection:text-stone-900;
+    @apply antialiased selection:bg-sv-text selection:text-sv-bg;
+    background-color: var(--sv-bg);
+    color: var(--sv-text);
   }
 }
 
 html,
-body,
+body {
+  height: 100%;
+  margin: 0;
+  background-color: var(--sv-bg);
+  color: var(--sv-text);
+}
+
+html::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -10;
+  background: radial-gradient(900px 600px at 70% 20%, rgba(123, 164, 208, 0.12), transparent 60%),
+              radial-gradient(800px 500px at 20% 70%, rgba(46, 94, 153, 0.08), transparent 55%);
+}
+
+html::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -10;
+  background-image: repeating-linear-gradient(0deg, rgba(13, 36, 64, 0.03) 0, rgba(13, 36, 64, 0.03) 1px, transparent 1px, transparent 3px);
+  mix-blend-mode: multiply;
+  opacity: 0.06;
+}
+
 #root {
   height: 100%;
 }
-body {
-  margin: 0;
+
+@layer utilities {
+  .sv-skeleton {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .sv-skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      theme('colors.sv.elev' / 40%),
+      theme('colors.sv.accent' / 5%),
+      theme('colors.sv.elev' / 40%),
+      transparent
+    );
+    transform: translateX(-100%);
+    animation: sv-shimmer 1.5s infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sv-skeleton::after {
+      animation: none;
+      transform: translateX(0);
+      background: theme('colors.sv.elev' / 20%);
+    }
+  }
+
+  @keyframes sv-shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
 }

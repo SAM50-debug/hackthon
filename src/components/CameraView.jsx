@@ -62,7 +62,7 @@ const CameraView = forwardRef(function CameraView({ isActive }, videoRef) {
   }, [isActive]);
 
   return (
-    <div className="w-full h-full relative overflow-hidden rounded-2xl bg-stone-900">
+    <div className="w-full h-full relative overflow-hidden rounded-2xl bg-sv-elev">
       {error ? (
         <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
             <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg max-w-sm">

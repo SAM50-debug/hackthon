@@ -72,18 +72,18 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-stone-50 px-4">
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-sm border border-stone-200 p-8">
+    <div className="min-h-screen flex items-center justify-center bg-sv-bg px-4">
+      <div className="w-full max-w-md bg-sv-surface rounded-3xl shadow-sm border border-sv-border p-8">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-stone-900 mb-2">PoseRx</h1>
-          <p className="text-stone-500">Sign in to sync your progress</p>
+          <h1 className="text-3xl font-bold text-sv-text mb-2">PoseRx</h1>
+          <p className="text-sv-muted">Sign in to sync your progress</p>
         </div>
 
         {user ? (
           <div className="space-y-6">
-            <div className="bg-stone-50 p-4 rounded-xl text-center">
-              <p className="text-sm text-stone-500 mb-1">Signed in as</p>
-              <p className="font-medium text-stone-900">{user.email}</p>
+            <div className="bg-sv-bg p-4 rounded-xl text-center">
+              <p className="text-sm text-sv-muted mb-1">Signed in as</p>
+              <p className="font-medium text-sv-text">{user.email}</p>
             </div>
             
             <div className="grid gap-3">
@@ -96,7 +96,7 @@ export default function Auth() {
               <button
                 onClick={handleSignOut}
                 disabled={loading}
-                className="w-full py-3 px-4 rounded-xl border border-stone-200 text-stone-600 font-medium hover:bg-stone-50 transition-colors disabled:opacity-50"
+                className="w-full py-3 px-4 rounded-xl border border-sv-border text-sv-muted font-medium hover:bg-sv-bg transition-colors disabled:opacity-50"
               >
                 {loading ? "Signing out..." : "Sign Out"}
               </button>
@@ -105,12 +105,12 @@ export default function Auth() {
         ) : (
           <div>
              {/* Tabs */}
-            <div className="flex p-1 bg-stone-100 rounded-xl mb-6">
+            <div className="flex p-1 bg-sv-bg rounded-xl mb-6">
               <button
                 className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
                   view === "sign_in"
-                    ? "bg-white text-stone-900 shadow-sm"
-                    : "text-stone-500 hover:text-stone-700"
+                    ? "bg-sv-surface text-sv-text shadow-sm"
+                    : "text-sv-muted hover:text-sv-text"
                 }`}
                 onClick={() => setView("sign_in")}
               >
@@ -119,8 +119,8 @@ export default function Auth() {
               <button
                 className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
                   view === "sign_up"
-                    ? "bg-white text-stone-900 shadow-sm"
-                    : "text-stone-500 hover:text-stone-700"
+                    ? "bg-sv-surface text-sv-text shadow-sm"
+                    : "text-sv-muted hover:text-sv-text"
                 }`}
                 onClick={() => setView("sign_up")}
               >
@@ -142,28 +142,28 @@ export default function Auth() {
 
             <form onSubmit={handleAuth} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">
+                <label className="block text-sm font-medium text-sv-text mb-1">
                   Email
                 </label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-stone-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-200 transition-all text-stone-900 placeholder:text-stone-400"
+                  className="w-full px-4 py-3 rounded-xl border border-sv-border bg-sv-bg focus:bg-sv-surface focus:outline-none focus:ring-2 focus:ring-slate-200 transition-all text-sv-text placeholder:text-sv-muted"
                   placeholder="you@example.com"
                   required
                 />
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">
+                <label className="block text-sm font-medium text-sv-text mb-1">
                   Password
                 </label>
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-stone-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-200 transition-all text-stone-900 placeholder:text-stone-400"
+                  className="w-full px-4 py-3 rounded-xl border border-sv-border bg-sv-bg focus:bg-sv-surface focus:outline-none focus:ring-2 focus:ring-slate-200 transition-all text-sv-text placeholder:text-sv-muted"
                   placeholder="••••••••"
                   minLength={6}
                   required
@@ -186,7 +186,7 @@ export default function Auth() {
             <div className="mt-6 text-center">
               <Link
                 to="/coach"
-                className="text-sm text-stone-400 hover:text-stone-600 transition-colors"
+                className="text-sm text-sv-muted hover:text-sv-muted transition-colors"
               >
                 Continue without sign-in
               </Link>

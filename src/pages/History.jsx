@@ -1,12 +1,20 @@
 // FILE: src/pages/History.jsx
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import useSessionHistory from "../hooks/useSessionHistory";
 import { getPerformanceTier } from "../utils/performance";
 import Sparkline from "../components/Sparkline";
 import { exportSessionsToPDF } from "../utils/pdfExport";
 
+import HistorySkeleton from "../components/skeletons/HistorySkeleton";
+
 export default function History() {
+  const [initLoading, setInitLoading] = useState(true);
   const { sessions, clearAll, refresh } = useSessionHistory();
+
+  useEffect(() => {
+    const timer = setTimeout(() => setInitLoading(false), 700);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Local UI state for filters/sort
   const [search, setSearch] = useState("");
@@ -88,26 +96,28 @@ export default function History() {
     });
   };
 
+  if (initLoading) return <HistorySkeleton />;
+
   return (
-    <div className="min-h-screen bg-stone-50 p-6 md:p-10 font-sans text-stone-900">
+    <div className="min-h-screen bg-sv-bg p-6 md:p-10 font-sans text-sv-text">
       <div className="max-w-5xl mx-auto space-y-8">
         {/* Header & Actions */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-stone-200 pb-6">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-sv-border pb-6">
           <div>
-            <h2 className="text-4xl font-bold text-stone-900 tracking-tight">History</h2>
-            <p className="text-stone-500 mt-2 text-sm tracking-wide uppercase font-medium">
+            <h2 className="text-4xl font-bold text-sv-text tracking-tight">History</h2>
+            <p className="text-sv-muted mt-2 text-sm tracking-wide uppercase font-medium">
               Your Training Log
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="relative z-10 flex flex-wrap gap-3">
             <button
               disabled={!sessions || sessions.length === 0}
               onClick={() => exportSessionsToPDF(sessions)}
-              className="px-5 py-2.5 bg-slate-800 text-white rounded-xl hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md text-sm font-semibold flex items-center gap-2"
+              className="relative inline-flex items-center gap-2 rounded-xl px-5 py-2.5 bg-sv-text text-sv-bg border border-sv-border/70 shadow-sm transition-[box-shadow,background-color] duration-200 hover:bg-sv-accent hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sv-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-sv-bg disabled:opacity-50 disabled:cursor-not-allowed text-sm font-bold tracking-wide"
             >
               <svg
-                className="w-4 h-4 opacity-80"
+                className="w-4 h-4 opacity-90"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -123,7 +133,7 @@ export default function History() {
             </button>
             <button
               onClick={refresh}
-              className="p-2.5 bg-white border border-stone-200 text-stone-600 rounded-xl hover:bg-stone-50 hover:text-stone-900 transition-colors shadow-sm"
+              className="p-2.5 bg-sv-surface/80 backdrop-blur-sm border border-sv-border/70 text-sv-muted rounded-xl hover:bg-sv-elev hover:text-sv-text transition-all duration-300 shadow-sm hover:shadow-md"
               title="Refresh"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -137,7 +147,7 @@ export default function History() {
             </button>
             <button
               onClick={clearAll}
-              className="p-2.5 bg-white border border-stone-200 text-rose-500 rounded-xl hover:bg-rose-50 hover:border-rose-100 hover:text-rose-700 transition-colors shadow-sm"
+              className="p-2.5 bg-sv-surface border border-sv-border text-rose-500 rounded-xl hover:bg-rose-50 hover:border-rose-100 hover:text-rose-700 transition-colors shadow-sm"
               title="Clear All History"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -162,11 +172,20 @@ export default function History() {
           </div>
         )}
 
-        {/* Filters & Toolbar */}
-        <div className="bg-white p-2 rounded-2xl border border-stone-200 shadow-sm flex flex-col md:flex-row gap-2 items-center justify-between sticky top-4 z-30 backdrop-blur-md bg-white/90">
-          <div className="flex flex-1 gap-2 w-full md:w-auto p-1">
+        {/* Filters & Toolbar (Dynamically Sticky under Navbar) */}
+        <div 
+          className="sticky z-40 py-3 px-3 rounded-2xl flex flex-col md:flex-row gap-3 items-center justify-between mb-4 mt-2 isolate"
+          style={{ top: 'var(--nav-h, 76px)' }}
+        >
+          {/* Background layer for pure blur without softening text */}
+          <div 
+            aria-hidden="true" 
+            className="absolute inset-0 z-0 bg-sv-bg/85 backdrop-blur-md border border-sv-border rounded-2xl shadow-sm"
+          ></div>
+
+          <div className="relative z-10 flex flex-1 gap-2 w-full md:w-auto p-1">
             <div className="relative flex-1 md:max-w-xs group">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-400 group-focus-within:text-stone-600 transition-colors">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-sv-muted group-focus-within:text-sv-muted transition-colors">
                 <svg
                   className="w-4 h-4"
                   fill="none"
@@ -186,13 +205,13 @@ export default function History() {
                 placeholder="Search date or exercise..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-stone-50 border-transparent focus:bg-white border focus:border-stone-300 rounded-xl text-sm transition-all outline-none placeholder-stone-400 text-stone-700"
+                className="w-full pl-9 pr-4 py-2 bg-sv-bg border-transparent focus:bg-sv-surface border focus:border-sv-border rounded-xl text-sm transition-all outline-none placeholder-stone-400 text-sv-text"
               />
             </div>
             <select
               value={exerciseFilter}
               onChange={(e) => setExerciseFilter(e.target.value)}
-              className="px-4 py-2 bg-stone-50 hover:bg-stone-100 border-transparent rounded-xl text-sm font-medium text-stone-600 focus:outline-none focus:ring-2 focus:ring-stone-200 cursor-pointer transition-colors"
+              className="px-4 py-2 bg-sv-bg hover:bg-sv-bg border-transparent rounded-xl text-sm font-medium text-sv-muted focus:outline-none focus:ring-2 focus:ring-sv-border cursor-pointer transition-colors"
             >
               <option value="All">All Exercises</option>
               <option value="Squat">Squat</option>
@@ -200,16 +219,16 @@ export default function History() {
             </select>
           </div>
 
-          <div className="flex items-center gap-3 w-full md:w-auto justify-end p-1">
-            <span className="text-xs font-semibold text-stone-400 uppercase tracking-wider hidden md:block">
+          <div className="relative z-10 flex items-center gap-3 w-full md:w-auto justify-end p-1">
+            <span className="text-xs font-semibold text-sv-muted uppercase tracking-wider hidden md:block">
               Sort
             </span>
-            <div className="flex bg-stone-100 p-1 rounded-xl">
+            <div className="flex bg-sv-bg p-1 rounded-xl">
               <button
                 onClick={() => setSortBy("newest")}
                 className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${sortBy === "newest"
-                  ? "bg-white text-stone-800 shadow-sm"
-                  : "text-stone-500 hover:text-stone-700"
+                  ? "bg-sv-surface text-sv-text shadow-sm"
+                  : "text-sv-muted hover:text-sv-text"
                   }`}
               >
                 Newest
@@ -217,8 +236,8 @@ export default function History() {
               <button
                 onClick={() => setSortBy("best")}
                 className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${sortBy === "best"
-                  ? "bg-white text-stone-800 shadow-sm"
-                  : "text-stone-500 hover:text-stone-700"
+                  ? "bg-sv-surface text-sv-text shadow-sm"
+                  : "text-sv-muted hover:text-sv-text"
                   }`}
               >
                 Best Score
@@ -229,8 +248,8 @@ export default function History() {
 
         {/* Sessions List */}
         {filteredSessions.length === 0 ? (
-          <div className="text-center py-24 bg-white rounded-3xl border border-stone-200 border-dashed">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-stone-100 mb-4 text-stone-400">
+          <div className="text-center py-24 bg-sv-surface rounded-3xl border border-sv-border border-dashed">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-sv-bg mb-4 text-sv-muted">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
@@ -240,8 +259,8 @@ export default function History() {
                 ></path>
               </svg>
             </div>
-            <p className="text-stone-500 font-medium">No sessions found.</p>
-            <p className="text-stone-400 text-sm mt-1">
+            <p className="text-sv-muted font-medium">No sessions found.</p>
+            <p className="text-sv-muted text-sm mt-1">
               Try changing your filters or record a new session.
             </p>
           </div>
@@ -293,66 +312,86 @@ export default function History() {
               return (
                 <div
                   key={s.id}
-                  className="bg-white rounded-3xl border border-stone-200 shadow-sm hover:shadow-lg hover:border-stone-300 transition-all duration-300 overflow-hidden group"
+                  className="bg-sv-surface/70 backdrop-blur-md rounded-3xl border border-sv-border/70 shadow-sm hover:shadow-md hover:border-sv-border transition-all duration-300 overflow-hidden group"
                 >
-                  <div className="p-6 md:p-8">
-                    {/* Top Row: Info & Score */}
-                    <div className="flex flex-col md:flex-row justify-between items-start gap-4 mb-8">
+                  <div className="p-5 md:p-6">
+                    {/* Top Scannable Row */}
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                      {/* Left: Metadata */}
                       <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className="px-3 py-1 rounded-full bg-stone-100 text-xs font-bold uppercase tracking-wider text-stone-600 border border-stone-200">
+                        <div className="flex items-center gap-3">
+                          <span className="px-3 py-1 rounded-full bg-sv-bg text-[10px] font-bold uppercase tracking-wider text-sv-text border border-sv-border/60 shadow-sm">
                             {s.exercise}
                           </span>
-                          <span className="text-xs text-stone-400 font-medium">
+                          <span className="text-[11px] text-sv-muted font-semibold uppercase tracking-wider">
                             {dateStr} • {timeStr}
                           </span>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-4 text-right">
-                        <div>
-                          <div className="text-4xl font-bold text-slate-800 leading-none tracking-tight">
-                            {s.score}
+                      {/* Middle: Compact Metrics */}
+                      <div className="hidden md:flex items-center gap-4 border-l border-r border-sv-border/40 px-6 mx-2">
+                        <div className="flex flex-col items-center">
+                          <span className="text-[9px] text-sv-muted uppercase tracking-widest font-bold mb-0.5">Duration</span>
+                          <span className="text-sm font-bold text-sv-text tabular-nums">{s.durationSec ?? 0}s</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <span className="text-[9px] text-sv-muted uppercase tracking-widest font-bold mb-0.5">Reps</span>
+                          <span className="text-sm font-bold text-sv-text tabular-nums">{s.reps}</span>
+                        </div>
+                        {fatigueTrend && (
+                           <div className="flex flex-col items-center">
+                             <span className="text-[9px] text-sv-muted uppercase tracking-widest font-bold mb-0.5">Fatigue</span>
+                             <span className="text-[10px] font-bold text-sv-text capitalize">{String(fatigueTrend).replace(/_/g, " ")}</span>
+                           </div>
+                        )}
+                      </div>
+
+                      {/* Right: Big Score */}
+                      <div className="flex items-center justify-end min-w-[120px]">
+                        <div className="text-right">
+                          <div className="flex items-baseline gap-1 justify-end">
+                            <span className="text-4xl font-extrabold text-sv-text tracking-tighter leading-none">{s.score}</span>
                           </div>
-                          <div
-                            className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${tierInfo.className ?? "text-stone-500"
-                              }`}
-                          >
-                            {tierInfo.label}
+                          <div className={`text-[9px] font-bold uppercase tracking-widest mt-1 ${tierInfo.class ? "text-sv-accent" : "text-sv-muted"}`}>
+                            {tierInfo.label} Quality
                           </div>
                         </div>
-                        <div
-                          className={`w-1.5 h-12 rounded-full ${getTierColorBg(
-                            scoreNum
-                          )} opacity-80`}
-                        ></div>
+                        <div className={`w-1.5 h-10 rounded-full ml-4 ${getTierColorBg(scoreNum)} opacity-80`}></div>
                       </div>
                     </div>
 
-                    {/* Stats Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
-                      <StatChip label="Duration" value={`${s.durationSec ?? 0}s`} />
-                      <StatChip label="Reps" value={s.reps} />
-                      {s.calibration?.margin > 0 && (
-                        <StatChip
-                          label="Calib Margin"
-                          value={Number(s.calibration.margin).toFixed(3)}
-                        />
-                      )}
-                      {fatigueTrend && (
-                        <StatChip
-                          label="Fatigue Trend"
-                          value={String(fatigueTrend).replace(/_/g, " ")}
-                        />
-                      )}
+                    {/* Insight Chips (Mobile metrics fallback + Mistakes) */}
+                    <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-sv-border/40">
+                       <span className="text-[10px] text-sv-muted font-bold uppercase tracking-wider mr-2 hidden md:inline-block">Insights:</span>
+                       
+                       {/* Mobile-only metrics chips */}
+                       <div className="md:hidden flex gap-2 w-full mb-2">
+                         <span className="px-2 py-1 bg-sv-bg rounded-md border border-sv-border text-[10px] font-semibold text-sv-muted flex-1 text-center">⏱ {s.durationSec ?? 0}s</span>
+                         <span className="px-2 py-1 bg-sv-bg rounded-md border border-sv-border text-[10px] font-semibold text-sv-muted flex-1 text-center">🔄 {s.reps} Reps</span>
+                       </div>
+
+                       {topMistakes.length > 0 ? (
+                          topMistakes.map(mm => (
+                             <span key={mm.key} className="px-2.5 py-1 bg-rose-50/50 border border-rose-100/50 rounded-lg flex items-center gap-1.5 text-[10px] font-semibold text-rose-700">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+                                <span className="capitalize">{mm.label}</span>
+                             </span>
+                          ))
+                       ) : (
+                          <span className="px-2.5 py-1 bg-emerald-50/50 border border-emerald-100/50 rounded-lg flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                            Perfect Form
+                          </span>
+                       )}
                     </div>
 
                     {/* Middle: Sparkline & Mistakes */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-6 border-t border-stone-100">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-6 border-t border-sv-border">
                       {/* Left: Sparkline */}
                       <div className="flex flex-col justify-center">
                         <div className="flex justify-between items-center mb-3">
-                          <span className="text-xs text-stone-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                          <span className="text-xs text-sv-muted font-bold uppercase tracking-wider flex items-center gap-1">
                             <svg
                               className="w-3 h-3"
                               fill="none"
@@ -369,20 +408,20 @@ export default function History() {
                             Symmetry Timeline
                           </span>
                           {hasTimeline && (
-                            <span className="text-[10px] text-stone-300 font-medium bg-stone-50 px-2 py-0.5 rounded-full">
+                            <span className="text-[10px] text-sv-muted font-medium bg-sv-bg px-2 py-0.5 rounded-full">
                               Lower is better
                             </span>
                           )}
                         </div>
 
                         {hasTimeline ? (
-                          <div className="bg-stone-50/50 rounded-xl p-4 border border-stone-100 relative group-hover:bg-stone-50 transition-colors">
+                          <div className="bg-sv-bg/50 rounded-xl p-4 border border-sv-border relative group-hover:bg-sv-bg transition-colors">
                             <div className="text-slate-600 h-12 relative z-10">
                               <Sparkline data={timelineArr} valueKey="hd" width={400} height={50} />
                             </div>
                           </div>
                         ) : (
-                          <div className="bg-stone-50 rounded-xl p-8 border border-stone-100 flex items-center justify-center text-xs text-stone-400 italic dashed-border">
+                          <div className="bg-sv-bg rounded-xl p-8 border border-sv-border flex items-center justify-center text-xs text-sv-muted italic dashed-border">
                             No timeline data recorded
                           </div>
                         )}
@@ -391,7 +430,7 @@ export default function History() {
                       {/* Right: Top Mistakes */}
                       <div>
                         <div className="flex justify-between items-center mb-3">
-                          <h4 className="text-xs text-stone-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                          <h4 className="text-xs text-sv-muted font-bold uppercase tracking-wider flex items-center gap-1">
                             <svg
                               className="w-3 h-3"
                               fill="none"
@@ -414,9 +453,9 @@ export default function History() {
                             {topMistakes.map((mm) => (
                               <div
                                 key={mm.key}
-                                className="flex justify-between items-center text-sm p-2 rounded-lg hover:bg-stone-50 transition-colors"
+                                className="flex justify-between items-center text-sm p-2 rounded-lg hover:bg-sv-bg transition-colors"
                               >
-                                <span className="text-stone-600 font-medium capitalize">
+                                <span className="text-sv-muted font-medium capitalize">
                                   {mm.label}
                                 </span>
                                 <span className="font-bold text-rose-600 bg-rose-50 px-2.5 py-0.5 rounded-md text-xs border border-rose-100">
@@ -449,7 +488,7 @@ export default function History() {
                         <div className="mt-4 flex justify-end">
                           <button
                             onClick={() => toggleJson(s.id)}
-                            className="text-[10px] font-bold text-stone-400 hover:text-stone-600 uppercase tracking-wider flex items-center gap-1 transition-colors"
+                            className="text-[10px] font-bold text-sv-muted hover:text-sv-muted uppercase tracking-wider flex items-center gap-1 transition-colors"
                           >
                             {isJsonExpanded ? "Hide Data" : "Raw Data"}
                             <svg
@@ -468,9 +507,9 @@ export default function History() {
 
                     {/* Extended Details: JSON */}
                     {isJsonExpanded && (
-                      <div className="mt-6 p-5 bg-stone-900 rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200 border border-stone-800 shadow-inner">
+                      <div className="mt-6 p-5 bg-sv-elev rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200 border border-sv-border shadow-inner">
                         <div className="flex justify-between items-center mb-2">
-                          <span className="text-[10px] text-stone-500 uppercase font-mono">
+                          <span className="text-[10px] text-sv-muted uppercase font-mono">
                             DEBUG: Session Data
                           </span>
                         </div>
@@ -492,7 +531,7 @@ export default function History() {
                     {s.aiSummary && (
                       <div className="mt-8 relative">
                         <div className="absolute top-0 left-6 -mt-3">
-                          <span className="bg-white px-2 text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                          <span className="bg-sv-surface px-2 text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                             <span className="w-4 h-4 bg-indigo-100 text-indigo-600 rounded flex items-center justify-center text-[10px]">
                               AI
                             </span>
@@ -525,7 +564,7 @@ export default function History() {
         )}
 
         <div className="pt-12 text-center pb-6">
-          <p className="text-[10px] text-stone-300 uppercase tracking-widest font-medium">
+          <p className="text-[10px] text-sv-muted uppercase tracking-widest font-medium">
             PoseRx Analytics • Private & Local
           </p>
         </div>
@@ -538,12 +577,13 @@ export default function History() {
 
 function SummaryCard({ label, value, highlight }) {
   return (
-    <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm flex flex-col justify-center items-center text-center transition-transform hover:-translate-y-0.5 duration-300">
-      <span className="text-[10px] text-stone-400 font-bold uppercase tracking-widest mb-1">
+    <div className="bg-sv-surface/70 backdrop-blur-md p-5 rounded-3xl border border-sv-border/70 shadow-sm flex flex-col justify-center items-center text-center transition-transform hover:-translate-y-0.5 duration-300 relative overflow-hidden group">
+      {highlight && <div className="absolute inset-0 bg-gradient-to-br from-sv-accent/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>}
+      <span className="text-[10px] text-sv-muted font-bold uppercase tracking-widest mb-1 relative z-10">
         {label}
       </span>
       <span
-        className={`text-3xl font-bold tracking-tight ${highlight ? "text-emerald-600" : "text-stone-800"
+        className={`text-3xl font-extrabold tracking-tight relative z-10 ${highlight ? "text-sv-accent" : "text-sv-text"
           }`}
       >
         {value}
@@ -554,18 +594,18 @@ function SummaryCard({ label, value, highlight }) {
 
 function StatChip({ label, value }) {
   return (
-    <div className="px-4 py-3 bg-stone-50 border border-stone-100 rounded-xl flex flex-col items-center justify-center text-center transition-colors hover:bg-stone-100">
-      <span className="text-[9px] text-stone-400 uppercase tracking-wider font-bold mb-0.5">
+    <div className="px-4 py-3 bg-sv-bg border border-sv-border rounded-xl flex flex-col items-center justify-center text-center transition-colors hover:bg-sv-bg">
+      <span className="text-[9px] text-sv-muted uppercase tracking-wider font-bold mb-0.5">
         {label}
       </span>
-      <span className="text-base font-bold text-stone-700 tabular-nums">{value}</span>
+      <span className="text-base font-bold text-sv-text tabular-nums">{value}</span>
     </div>
   );
 }
 
 function getTierColorBg(score) {
   if (score >= 90) return "bg-emerald-500";
-  if (score >= 80) return "bg-blue-500";
+  if (score >= 80) return "bg-sv-accent";
   if (score >= 60) return "bg-amber-400";
   return "bg-rose-500";
 }

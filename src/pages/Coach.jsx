@@ -1,4 +1,3 @@
-// FILE: src/pages/Coach.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   computeRepScore,
@@ -9,6 +8,7 @@ import ExerciseSelector from "../components/ExerciseSelector";
 import CameraView from "../components/CameraView";
 import PoseOverlay from "../components/PoseOverlay";
 import usePose from "../hooks/usePose";
+import CoachSkeleton from "../components/skeletons/CoachSkeleton";
 
 import { calculateAngle } from "../utils/angles";
 import { createRepCounter } from "../utils/repCounter";
@@ -22,8 +22,15 @@ import { supabase } from "../lib/supabaseClient";
 import { saveSessionCloud } from "../lib/storage/sessionCloudStore";
 
 export default function Coach() {
+  const [initLoading, setInitLoading] = useState(true);
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [sessionActive, setSessionActive] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setInitLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
+
 
   const [startedAt, setStartedAt] = useState(null);
   const [nowMs, setNowMs] = useState(0);
@@ -622,19 +629,21 @@ export default function Coach() {
     }
   }
 
+  if (initLoading) return <CoachSkeleton />;
+
   return (
-    <div className="min-h-screen bg-stone-50 p-6 md:p-10 font-sans text-stone-900">
+    <div className="min-h-screen bg-sv-bg p-6 md:p-10 font-sans text-sv-text animate-in fade-in duration-300">
       <div className="max-w-6xl mx-auto">
         
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-             <h2 className="text-3xl font-bold text-stone-900 tracking-tight">AI Coach</h2>
-             <p className="text-stone-500 mt-1">Real-time pose analysis & feedback</p>
+             <h2 className="text-3xl font-bold text-sv-text tracking-tight">AI Coach</h2>
+             <p className="text-sv-muted mt-1">Real-time pose analysis & feedback</p>
           </div>
           <div className="flex items-center gap-3">
-             <div className={`px-3 py-1 rounded-full text-xs font-bold tracking-wide flex items-center gap-2 ${sessionActive ? "bg-emerald-100 text-emerald-800" : "bg-stone-200 text-stone-600"}`}>
-               <div className={`w-2 h-2 rounded-full ${sessionActive ? "bg-emerald-500 animate-pulse" : "bg-stone-400"}`}></div>
+             <div className={`px-3 py-1 rounded-full text-xs font-bold tracking-wide flex items-center gap-2 ${sessionActive ? "bg-emerald-100 text-emerald-800" : "bg-sv-elev text-sv-muted"}`}>
+               <div className={`w-2 h-2 rounded-full ${sessionActive ? "bg-emerald-500 animate-pulse" : "bg-sv-elev"}`}></div>
                {sessionActive ? "LIVE SESSION" : "IDLE"}
              </div>
           </div>
@@ -651,26 +660,37 @@ export default function Coach() {
           
           {/* Left Column: Camera (Big) */}
           <div className="lg:col-span-2 flex flex-col gap-6">
-             <div className="bg-white rounded-3xl shadow-sm border border-stone-200 overflow-hidden relative group">
-                {/* Camera Header - Floating */}
-                <div className="absolute top-6 left-6 z-20">
+             
+             {/* Session HUD */}
+             <div className="bg-sv-surface/70 border border-sv-border/70 backdrop-blur-md rounded-2xl shadow-sm p-4 flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
                    <ExerciseSelector selected={selectedExercise} onSelect={setSelectedExercise} />
                 </div>
-
-                {/* Status Badge - Floating Right */}
-                <div className="absolute top-6 right-6 z-20">
-                    <div className={`px-4 py-1.5 rounded-full text-xs font-bold tracking-wide flex items-center gap-2 backdrop-blur-md shadow-sm border ${
-                      sessionActive 
-                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-700" 
-                        : "bg-white/80 border-stone-200 text-stone-500"
-                    }`}>
-                      <div className={`w-2 h-2 rounded-full ${sessionActive ? "bg-emerald-500 animate-pulse" : "bg-stone-400"}`}></div>
-                      {sessionActive ? "LIVE SESSION" : "IDLE"}
-                    </div>
+                
+                <div className={`px-4 py-1.5 rounded-full text-[10px] font-bold tracking-widest uppercase flex items-center gap-2 border ${
+                  sessionActive 
+                    ? (appPaused ? "bg-amber-500/10 border-amber-500/20 text-amber-700" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-700") 
+                    : "bg-sv-bg border-sv-border text-sv-muted"
+                }`}>
+                  <div className={`w-2 h-2 rounded-full ${sessionActive && !appPaused ? "bg-emerald-500 animate-pulse" : sessionActive && appPaused ? "bg-amber-500" : "bg-sv-elev"}`}></div>
+                  {sessionActive ? (appPaused ? "PAUSED" : "RECORDING") : "IDLE"}
                 </div>
+
+                <div className="hidden lg:flex items-center gap-6 text-sm font-medium">
+                  <div className="flex flex-col"><span className="text-[10px] text-sv-muted uppercase font-bold tracking-wider">Time</span><span className="tabular-nums font-semibold text-sv-text">{liveDurationSec}s</span></div>
+                  <div className="flex flex-col"><span className="text-[10px] text-sv-muted uppercase font-bold tracking-wider">Reps</span><span className="tabular-nums font-semibold text-sv-text">{selectedExercise === "Squat" ? squat.reps : shoulder.reps}</span></div>
+                  <div className="flex flex-col"><span className="text-[10px] text-sv-muted uppercase font-bold tracking-wider">Score</span><span className="tabular-nums font-semibold text-sv-accent">{score}</span></div>
+                </div>
+             </div>
+
+             {/* Camera Viewport Container */}
+             <div className="bg-sv-surface/70 border border-sv-border/70 backdrop-blur-md rounded-3xl shadow-sm overflow-hidden relative group before:absolute before:inset-0 before:p-[1px] before:bg-gradient-to-b before:from-white/10 before:to-transparent before:pointer-events-none before:-z-10 before:rounded-3xl">
                 
                 {/* Camera Viewport */}
-                <div className="relative aspect-[4/3] w-full bg-stone-100 flex items-center justify-center overflow-hidden">
+                <div className="relative aspect-[4/3] w-full bg-slate-900 flex items-center justify-center overflow-hidden">
+                   {/* Top Highlight purely for camera edge */}
+                   <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent z-40 pointer-events-none"></div>
+
                    <div className="absolute inset-0">
                       <CameraView
                         isActive={sessionActive && !!selectedExercise && !appPaused}
@@ -680,15 +700,20 @@ export default function Coach() {
                    </div>
                    
                    {!sessionActive && !selectedExercise && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-stone-50/50 backdrop-blur-sm z-10">
-                          <p className="text-stone-400 font-medium">Select an exercise to begin</p>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-sv-bg/80 backdrop-blur-sm z-10 transition-all duration-500">
+                          <div className="w-16 h-16 bg-sv-surface border border-sv-border rounded-2xl flex items-center justify-center mb-4 shadow-sm text-sv-accent">
+                             <svg className="w-8 h-8 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                          </div>
+                          <p className="text-sv-text font-medium text-lg">Camera Standby</p>
+                          <p className="text-sv-muted text-sm mt-1">Select an exercise to enable live feed</p>
                       </div>
                    )}
 
                    {/* Warning Overlay */}
                    {sessionActive && appPaused && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-stone-900/10 backdrop-blur-sm z-30">
-                       <div className="px-6 py-3 bg-white/90 rounded-xl shadow-lg border border-amber-200 text-amber-600 font-semibold animate-in fade-in zoom-in duration-200">
+                    <div className="absolute inset-0 flex items-center justify-center bg-sv-elev/20 backdrop-blur-sm z-30">
+                       <div className="px-6 py-4 bg-sv-surface/90 rounded-2xl shadow-lg border border-amber-200/50 text-amber-700 font-semibold animate-in fade-in zoom-in duration-200 flex items-center gap-3">
+                          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
                           Session Paused (Tab Hidden)
                        </div>
                     </div>
@@ -696,47 +721,51 @@ export default function Coach() {
                 </div>
 
                 {/* Footer Info */}
-                <div className="px-6 py-3 bg-white border-t border-stone-100 flex justify-between items-center text-[10px] uppercase tracking-wider text-stone-400 font-medium">
-                   <span>AI Pose Analysis</span>
-                   <span>{overlayLandmarks ? "Subject Detected" : "Waiting for Subject"}</span>
+                <div className="px-6 py-3 bg-sv-surface/50 flex justify-between items-center text-[10px] uppercase tracking-wider text-sv-muted font-bold">
+                   <span className="flex items-center gap-1.5"><svg className="w-3 h-3 text-sv-accent" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg> AI Model Active</span>
+                   <span>{overlayLandmarks ? "Subject Tracked" : "Awaiting Subject"}</span>
                 </div>
              </div>
           </div>
 
           {/* Right Column: Controls & Analytics */}
-          <div className="space-y-6 lg:sticky lg:top-8">
+          <div className="space-y-6 lg:sticky lg:top-24">
              
              {/* Score Card */}
-             <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-8 text-center relative overflow-hidden">
-                 <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-stone-200 via-stone-300 to-stone-200 opacity-50"></div>
-                 <span className="text-xs text-stone-400 uppercase tracking-widest font-semibold block mb-3">Performance Score</span>
-                 <div className="flex items-baseline justify-center gap-1 mb-2">
-                    <span className="text-6xl font-bold text-slate-800 tracking-tighter">
+             <div className="bg-sv-surface/70 backdrop-blur-md rounded-3xl shadow-sm border border-sv-border/70 p-8 text-center relative overflow-hidden group">
+                 <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-sv-accent/40 to-transparent"></div>
+                 <div className="absolute inset-0 bg-gradient-to-b from-sv-accent/5 to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                 
+                 <div className="relative z-10 flex justify-between items-center mb-6">
+                   <span className="text-[10px] text-sv-muted uppercase tracking-widest font-bold">Performance</span>
+                   <span className={`inline-flex px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider border ${tierInfo.class ? "bg-opacity-10 border-opacity-20" : "bg-sv-bg text-sv-muted border-sv-border"}`}>
+                     {tierInfo.label} Quality
+                   </span>
+                 </div>
+                 
+                 <div className="flex items-baseline justify-center gap-1 mb-2 relative z-10">
+                    <span key={score} className="text-7xl font-extrabold text-sv-text tracking-tighter transition-all animate-in zoom-in duration-300">
                        {score}
                     </span>
-                    <span className="text-lg text-stone-300 font-light">/100</span>
                  </div>
-                 <span className={`inline-flex px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border ${tierInfo.class ? `bg-opacity-10 border-opacity-20 translate-y-0` : "bg-stone-100 text-stone-500 border-stone-200"}`}>
-                   {tierInfo.label}
-                 </span>
              </div>
 
              {/* Live Stats Grid */}
              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white px-5 py-4 rounded-2xl border border-stone-200 shadow-sm flex flex-col justify-center">
-                   <p className="text-[10px] text-stone-400 uppercase tracking-wider font-semibold mb-1">Duration</p>
-                   <p className="text-xl font-bold text-stone-700 tabular-nums">{liveDurationSec}s</p>
+                <div className="bg-sv-surface/70 backdrop-blur-md px-5 py-4 rounded-2xl border border-sv-border/70 shadow-sm flex flex-col justify-center">
+                   <p className="text-[10px] text-sv-muted uppercase tracking-wider font-bold mb-1">Duration</p>
+                   <p className="text-2xl font-bold text-sv-text tabular-nums">{liveDurationSec}<span className="text-sm font-medium text-sv-muted ml-0.5">s</span></p>
                 </div>
                 
                 {selectedExercise === "Shoulder Raise" && calibration.ready ? (
-                  <div className="bg-white px-5 py-4 rounded-2xl border border-stone-200 shadow-sm flex flex-col justify-center">
-                     <p className="text-[10px] text-stone-400 uppercase tracking-wider font-semibold mb-1">Calibration</p>
-                     <p className="text-xl font-bold text-stone-700 tabular-nums">{calibration.margin.toFixed(2)}</p>
+                  <div className="bg-sv-surface/70 backdrop-blur-md px-5 py-4 rounded-2xl border border-sv-border/70 shadow-sm flex flex-col justify-center">
+                     <p className="text-[10px] text-sv-muted uppercase tracking-wider font-bold mb-1">Calibration</p>
+                     <p className="text-2xl font-bold text-sv-text tabular-nums">{calibration.margin.toFixed(2)}</p>
                   </div>
                 ) : (
-                  <div className="bg-white px-5 py-4 rounded-2xl border border-stone-200 shadow-sm flex flex-col justify-center">
-                     <p className="text-[10px] text-stone-400 uppercase tracking-wider font-semibold mb-1">Reps</p>
-                     <p className="text-xl font-bold text-stone-700 tabular-nums">
+                  <div className="bg-sv-surface/70 backdrop-blur-md px-5 py-4 rounded-2xl border border-sv-border/70 shadow-sm flex flex-col justify-center">
+                     <p className="text-[10px] text-sv-muted uppercase tracking-wider font-bold mb-1">Reps</p>
+                     <p className="text-2xl font-bold text-sv-text tabular-nums">
                         {selectedExercise === "Squat" ? squat.reps : shoulder.reps}
                      </p>
                   </div>
@@ -744,23 +773,23 @@ export default function Coach() {
              </div>
 
              {/* Feedback Board */}
-             <div className="bg-indigo-50/50 border border-indigo-100 p-6 rounded-2xl min-h-[120px] flex flex-col justify-center relative backdrop-blur-sm">
-                <div className="absolute top-4 left-4 text-indigo-200">
-                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/></svg>
+             <div className="bg-indigo-50/50 border border-indigo-100/50 p-6 rounded-3xl min-h-[100px] flex flex-col justify-center relative backdrop-blur-sm shadow-sm">
+                <div className="absolute top-4 left-4 text-indigo-300">
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/></svg>
                 </div>
-                <p className="text-center text-indigo-900 font-medium leading-relaxed pl-4">
+                <p className="text-center text-indigo-900 font-medium leading-snug pl-5 text-sm">
                   {feedback}
                 </p>
              </div>
 
              {/* Contextual Metrics */}
              {selectedExercise === "Squat" && (
-               <div className="bg-white px-5 py-4 rounded-2xl border border-stone-200 shadow-sm">
-                  <div className="flex justify-between items-center text-sm mb-2">
-                    <span className="text-stone-500 font-medium">Knee Angle</span>
-                    <span className="font-mono font-bold text-stone-700">{squat.kneeAngle ?? "--"}°</span>
+               <div className="bg-sv-surface/70 backdrop-blur-md px-5 py-4 rounded-2xl border border-sv-border/70 shadow-sm">
+                  <div className="flex justify-between items-center text-sm mb-3">
+                    <span className="text-sv-muted font-bold text-[10px] uppercase tracking-wider">Knee Angle</span>
+                    <span className="font-mono font-bold text-sv-text tracking-tight">{squat.kneeAngle ?? "--"}°</span>
                   </div>
-                  <div className="w-full bg-stone-100 rounded-full h-1.5 overflow-hidden">
+                  <div className="w-full bg-sv-bg rounded-full h-1.5 overflow-hidden border border-sv-border/40">
                       <div 
                          className="h-full bg-slate-800 transition-all duration-300" 
                          style={{ width: `${Math.min(100, (squat.kneeAngle || 0) / 1.8)}%` }} 
@@ -770,11 +799,11 @@ export default function Coach() {
              )}
 
              {selectedExercise === "Shoulder Raise" && (
-               <div className="bg-white px-5 py-4 rounded-2xl border border-stone-200 shadow-sm flex items-center justify-between">
-                  <span className="text-stone-500 font-medium text-sm">Symmetry</span>
-                  <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold ${shoulder.symmetryOk ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-rose-50 text-rose-700 border border-rose-100"}`}>
+               <div className="bg-sv-surface/70 backdrop-blur-md px-5 py-4 rounded-2xl border border-sv-border/70 shadow-sm flex items-center justify-between">
+                  <span className="text-sv-muted font-bold text-[10px] uppercase tracking-wider">Symmetry</span>
+                  <div className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${shoulder.symmetryOk ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-rose-50 text-rose-700 border border-rose-100"}`}>
                       {shoulder.symmetryOk ? (
-                          <><span>Excellent</span> <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg></>
+                          <><span>Aligned</span> <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg></>
                       ) : (
                           <><span>Adjust</span> <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg></>
                       )}
@@ -783,22 +812,28 @@ export default function Coach() {
              )}
 
              {/* Main Actions */}
-             <div className="pt-2">
+             <div className="pt-4">
                 {!sessionActive ? (
-                  <button
-                    disabled={!selectedExercise}
-                    onClick={startSession}
-                    className="w-full py-4 rounded-xl bg-slate-800 text-white font-bold text-lg shadow-lg hover:bg-slate-700 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:shadow-none focus:outline-none focus:ring-2 focus:ring-stone-400 focus:ring-offset-2 flex items-center justify-center gap-2"
-                  >
-                    <span>Start Session</span>
-                    <svg className="w-5 h-5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                  </button>
+                  <div className="flex flex-col gap-2">
+                    {!selectedExercise && (
+                      <p className="text-[10px] text-center text-sv-muted font-semibold uppercase tracking-widest"><span className="opacity-50">🔒</span> Select an exercise</p>
+                    )}
+                    <button
+                      disabled={!selectedExercise}
+                      onClick={startSession}
+                      className="relative w-full py-4 rounded-2xl bg-gradient-to-br from-sv-accent2 to-sv-accent text-sv-bg font-bold text-[15px] uppercase tracking-wider shadow-md hover:from-sv-accent hover:to-sv-accent2 hover:shadow-lg transition-[shadow,transform] duration-300 transform hover:-translate-y-[1px] active:translate-y-0 disabled:opacity-50 disabled:from-sv-elev disabled:to-sv-elev disabled:text-sv-muted disabled:border disabled:border-sv-border disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:shadow-none focus:outline-none focus:ring-2 focus:ring-sv-accent/40 focus:ring-offset-2 focus:ring-offset-sv-bg flex items-center justify-center gap-2 group overflow-hidden"
+                    >
+                      <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                      <span>Start Session</span>
+                      <svg className="w-5 h-5 opacity-70 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </button>
+                  </div>
                 ) : (
                    <button
                     onClick={endSession}
-                    className="w-full py-4 rounded-xl bg-white border-2 border-rose-100 text-rose-600 font-bold text-lg shadow-sm hover:bg-rose-50 hover:border-rose-200 hover:text-rose-700 transition-all focus:outline-none focus:ring-2 focus:ring-rose-400 focus:ring-offset-2 flex items-center justify-center gap-2"
+                    className="w-full py-4 rounded-2xl bg-sv-surface/70 backdrop-blur-md border border-rose-200/50 text-rose-600 font-bold text-[15px] uppercase tracking-wider shadow-sm hover:bg-rose-50 hover:border-rose-200 hover:text-rose-700 transition-[colors,box-shadow,transform] duration-200 focus:outline-none focus:ring-2 focus:ring-rose-400 focus:ring-offset-2 flex items-center justify-center gap-2"
                   >
-                     <div className="w-3 h-3 rounded bg-rose-500"></div>
+                     <div className="w-3 h-3 rounded bg-rose-500 shadow-sm shadow-rose-500/30"></div>
                      <span>End & Save</span>
                   </button>
                 )}
@@ -807,7 +842,7 @@ export default function Coach() {
           </div>
         </div>
         
-        <div className="mt-12 text-center text-[10px] text-stone-300 max-w-lg mx-auto leading-relaxed uppercase tracking-wider">
+        <div className="mt-12 text-center text-[10px] text-sv-muted max-w-lg mx-auto leading-relaxed uppercase tracking-wider">
            Not a medical device • Educational use only
         </div>
       </div>
